@@ -1,4 +1,4 @@
-pragma solidity 0.4.24;
+pragma solidity ^0.4.24;
 
 import "@aragon/templates-shared/contracts/TokenCache.sol";
 import "@aragon/templates-shared/contracts/BaseTemplate.sol";

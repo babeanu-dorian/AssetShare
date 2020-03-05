@@ -1,4 +1,4 @@
-pragma solidity ^0.5.0;
+pragma solidity 0.4.24;
 
 import "@aragon/os/contracts/apps/AragonApp.sol";
 import "@aragon/os/contracts/lib/math/SafeMath.sol";
@@ -14,7 +14,7 @@ contract AssetShare is AragonApp {
     uint id;                  // offer id (index in the offerList)
     OfferType offerType;      // the type of the offer (BUY or SELL)
     uint listPosition;        // position in the activeOffersList (MISSING if not active)
-    address payable seller;   // address of the one making the offer
+    address seller;   // address of the one making the offer
     address buyer;            // address of the intended recepient of the offer (empty for public auction)
     uint shares;              // amount of offered shares
     uint price;               // price of the shares in wei (set to 0 for gift)
@@ -34,7 +34,7 @@ contract AssetShare is AragonApp {
   string[] private assetDescriptionList;                       // textual description of each asset
 
   mapping(address => uint) private ownershipMap;               // maps each address 
-  address payable[] private ownerList;                         // list of owner addresses
+  address[] private ownerList;                         // list of owner addresses
 
   uint private treasuryBalance;                 // wei in the treasury
   uint private treasuryRatio;                   // the ratio of ether placed in the treasury
@@ -64,7 +64,7 @@ contract AssetShare is AragonApp {
   }
 
   // the ether produced by the asset(s) is sent by calling this function
-  function payment(string calldata info) external payable {
+  function payment(string info) external payable {
       // TODO: do something with the message, maybe fire an event, or store it in history ?
       // use msg.value to see how much wei was received
   }
