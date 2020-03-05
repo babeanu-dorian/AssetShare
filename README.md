@@ -20,5 +20,3 @@ Install ipfs:
 sudo npm install go-ipfs@0.4.22 --global
 ipfs init
 ```
-
-### How to run
