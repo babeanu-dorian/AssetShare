@@ -7,6 +7,8 @@ contract CounterApp is AragonApp {
   // Events
   event PAYMENT_RECEIVED(address sender, uint amount, string info);
   event TRESURY_DEPOSIT(address sender, uint amount, string info);
+  event SELL_OFFER(address seller, uint amount);
+
 
   enum OfferType {
     SELL,
@@ -30,14 +32,18 @@ contract CounterApp is AragonApp {
   uint constant public TOTAL_SHARES = 1000000;                 // total number of ownership shares
   uint constant public TREASURY_RATIO_DENOMINATOR = 1000000;   // the ratio of ether placed in the treasury
                                                                // = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
+  uint public offerId = 0;
+
 
   uint constant private DEFAULT_TREASURY_RATIO = 100000;       // default value of treasuryRatio
   uint constant private DEFAULT_PAYOUT_PERIOD = 60;            // default value of payoutPeriod
 
+
+
   string[] private assetDescriptionList;                       // textual description of each asset
 
   mapping(address => uint) private ownershipMap;               // maps each address 
-  address[] private ownerList;                                 // list of owner addresses
+  address[] public ownerList;                                 // list of owner addresses
 
   uint private treasuryBalance;                 // wei in the treasury
   uint private treasuryRatio;                   // the ratio of ether placed in the treasury
@@ -48,6 +54,8 @@ contract CounterApp is AragonApp {
 
   Offer[] offerList;                            // list of all offers
   uint[] private activeOffersList;              // list indexes of active ofers
+
+
 
   function initialize() public onlyInit {
 
@@ -81,6 +89,16 @@ contract CounterApp is AragonApp {
     return treasuryBalance;
   }
 
+  function getOffer() external returns (uint){
+    return offerList[0].price;
+  }
+
+
+  function getShares() external returns (uint){
+    return ownershipMap[msg.sender];
+  }
+
+
   // returns the amount of funds that will be split between shareholders upon the next payday
   function getFunds() public view returns (uint) {
     return address(this).balance - treasuryBalance;
@@ -101,7 +119,6 @@ contract CounterApp is AragonApp {
 
     // funds accumulated since last division
     uint funds = getFunds();
-
     // send owners' gains
     for (uint i = 0; i != ownerList.length; ++i) {
         ownerList[i].send((funds * ownershipMap[ownerList[i]]) / TOTAL_SHARES);
@@ -112,7 +129,7 @@ contract CounterApp is AragonApp {
   // use 0 for the receiver address to let anyone purchase the shares
   // set the price to 0 for gift
   function offerToSell(uint sharesAmount, uint price, address receiver, uint availabilityPeriod) external {
-
+//
     require(sharesAmount > 0, "0-shares auctions are not allowed.");
     require(sharesAmount <= ownershipMap[msg.sender], "Caller does not own this many shares.");
 
@@ -122,7 +139,10 @@ contract CounterApp is AragonApp {
 
     // add it to the list of active offers
     activeOffersList.push(offerList.length - 1);
+    emit SELL_OFFER(msg.sender,sharesAmount);
   }
+
+
 
   // allows the caller to complete a SELL offer and performs the exchange of shares and ether
   // if any of the requirements fail, the transaction (including the transferred money) is reverted
@@ -187,4 +207,5 @@ contract CounterApp is AragonApp {
     activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
     --activeOffersList.length;
   }
+
 }

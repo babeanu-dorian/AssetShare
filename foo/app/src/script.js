@@ -21,6 +21,12 @@ app.store(
           return { ...nextState,
             treasuryBalance: await getTreasuryBalance()
           }
+        case 'SELL_OFFER':
+          return {...nextState,
+            offer: await getOffer()
+          }
+
+
         case events.SYNC_STATUS_SYNCING:
           return { ...nextState, isSyncing: true }
         case events.SYNC_STATUS_SYNCED:
@@ -59,4 +65,8 @@ async function getTreasuryBalance() {
 
 async function getFunds() {
   return parseInt(await app.call('getFunds').toPromise(), 10);
+}
+
+async function getOffer(){
+  return parseInt(await app.call('getOffer').toPromise(), 10);
 }

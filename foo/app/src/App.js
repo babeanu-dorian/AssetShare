@@ -18,7 +18,7 @@ import styled from 'styled-components'
 
 function App() {
   const { api, appState, path, requestPath } = useAragonApi()
-  const { treasuryBalance, funds, isSyncing } = appState
+  const { treasuryBalance, funds, isSyncing, offer, sharesAmount } = appState
   const [ amount, setAmount ] = useState(0)
   const [ message, setMessage] = useState('')
 
@@ -50,6 +50,10 @@ function App() {
       >
         TreasuryBalance: {treasuryBalance} <br />
         Funds: {funds} <br />
+        OfferSelled: {offer} <br />
+        SharesAmount: {sharesAmount} <br />
+
+
         <TextInput.Number
           label="Amount (wei)"
           value={amount}
@@ -71,7 +75,14 @@ function App() {
             label="Treasury deposit"
             onClick={() => api.treasuryDeposit(message, {'value': amount}).toPromise()}
           />
+
         </Buttons>
+
+        <Button
+          display="label"
+          label="Sell offer"
+          onClick={() => api.offerToSell(10, 1000,'0x8401Eb5ff34cc943f096A32EF3d5113FEbE8D4Eb', 10000000).toPromise()}
+      />
       </Box>
     </Main>
   )
