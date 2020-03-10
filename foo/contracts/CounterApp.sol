@@ -2,7 +2,7 @@ pragma solidity 0.4.24;
 
 import "@aragon/os/contracts/apps/AragonApp.sol";
 
-contract AssetShare is AragonApp {
+contract CounterApp is AragonApp {
 
   // Events
   event PAYMENT_RECEIVED(address sender, uint amount, string info);

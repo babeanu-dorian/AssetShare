@@ -1,9 +1,9 @@
-pragma solidity ^0.4.24;
+pragma solidity 0.4.24;
 
 import "@aragon/templates-shared/contracts/TokenCache.sol";
 import "@aragon/templates-shared/contracts/BaseTemplate.sol";
 
-import "./AssetShare.sol";
+import "./CounterApp.sol";
 
 
 contract Template is BaseTemplate, TokenCache {
@@ -78,7 +78,7 @@ contract Template is BaseTemplate, TokenCache {
 
         (Kernel dao, ACL acl) = _createDAO();
         (Voting voting) = _setupBaseApps(dao, acl, _holders, _stakes, _votingSettings);
-        // Setup asset-share app
+        // Setup foo app
         _setupCustomApp(dao, acl, voting);
         _transferRootPermissionsFromTemplateAndFinalizeDAO(dao, voting);
     }
@@ -115,7 +115,7 @@ contract Template is BaseTemplate, TokenCache {
         _createTokenManagerPermissions(_acl, _tokenManager, _voting, _voting);
     }
 
-    // Next we install and create permissions for the asset-share app
+    // Next we install and create permissions for the foo app
     //--------------------------------------------------------------//
     function _setupCustomApp(
         Kernel _dao,
@@ -124,29 +124,28 @@ contract Template is BaseTemplate, TokenCache {
     )
         internal
     {
-        AssetShare app = _installAssetShare(_dao);
-        _createAssetSharePermissions(_acl, app, _voting, _voting);
+        CounterApp app = _installCounterApp(_dao);
+        _createCounterAppPermissions(_acl, app, _voting, _voting);
     }
 
-    function _installAssetShare(
+    function _installCounterApp(
         Kernel _dao
     )
-        internal returns (AssetShare)
+        internal returns (CounterApp)
     {
-        bytes32 _appId = keccak256(abi.encodePacked(apmNamehash("open"), keccak256("asset-share")));
-        bytes memory initializeData = abi.encodeWithSelector(AssetShare(0).initialize.selector);
-        return AssetShare(_installDefaultApp(_dao, _appId, initializeData));
+        bytes32 _appId = keccak256(abi.encodePacked(apmNamehash("open"), keccak256("foo")));
+        bytes memory initializeData = abi.encodeWithSelector(CounterApp(0).initialize.selector);
+        return CounterApp(_installDefaultApp(_dao, _appId, initializeData));
     }
 
-    function _createAssetSharePermissions(
+    function _createCounterAppPermissions(
         ACL _acl,
-        AssetShare _app,
+        CounterApp _app,
         address _grantee,
         address _manager
     )
         internal
     {
-        // kept as examples:
         //_acl.createPermission(_grantee, _app, _app.INCREMENT_ROLE(), _manager);
         //_acl.createPermission(ANY_ENTITY, _app, _app.DECREMENT_ROLE(), _manager);
     }

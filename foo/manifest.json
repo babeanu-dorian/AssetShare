@@ -1,7 +1,7 @@
 {
-  "name": "AssetShare",
+  "name": "Counter",
   "author": "Placeholder-author",
-  "description": "TODO",
+  "description": "An application for Aragon",
   "details_url": "/meta/details.md",
   "source_url": "https://<placeholder-repository-url>",
   "icons": [
@@ -14,5 +14,3 @@
   "start_url": "/index.html",
   "script": "/script.js"
 }
-
-
