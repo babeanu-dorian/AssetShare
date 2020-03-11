@@ -1,92 +1,118 @@
-import React, { useState } from 'react'
-import { useAragonApi } from '@aragon/api-react'
+import React, {useState} from 'react'
+import {useAragonApi} from '@aragon/api-react'
 import {
-  Box,
-  Button,
-  GU,
-  Header,
-  IconMinus,
-  IconPlus,
-  Main,
-  SyncIndicator,
-  Tabs,
-  Text,
-  TextInput,
-  textStyle,
+    Box,
+    Button,
+    GU,
+    Header,
+    IconMinus,
+    IconPlus,
+    Main,
+    SyncIndicator,
+    Tabs,
+    Text,
+    TextInput,
+    textStyle,
+    DataView, IdentityBadge,
+
 } from '@aragon/ui'
 import styled from 'styled-components'
 
+// import {offerList} from 'index.js'
+
 function App() {
-  const { api, appState, path, requestPath } = useAragonApi()
-  const { treasuryBalance, funds, isSyncing, offer, sharesAmount } = appState
-  const [ amount, setAmount ] = useState(0)
-  const [ message, setMessage] = useState('')
+    const {api, appState, path, requestPath} = useAragonApi()
+    const {treasuryBalance, funds, isSyncing, length, offer,offerList} = appState
+    const [amount, setAmount] = useState(0)
+    const [message, setMessage] = useState('')
 
-  const pathParts = path.match(/^\/tab\/([0-9]+)/)
-  const pageIndex = Array.isArray(pathParts)
-    ? parseInt(pathParts[1], 10) - 1
-    : 0
+    // var offerList = [];
 
-  return (
-    <Main>
-      {isSyncing && <SyncIndicator />}
-      <Header
-        primary="AssetShare"
-      />
-      <Tabs
-        items={['Tab 1', 'Tab 2']}
-        selected={pageIndex}
-        onChange={index => requestPath(`/tab/${index + 1}`)}
-      />
-      <Box
-        css={`
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          text-align: center;
-          height: ${50 * GU}px;
-          ${textStyle('title3')};
-        `}
-      >
-        TreasuryBalance: {treasuryBalance} <br />
-        Funds: {funds} <br />
-        OfferSelled: {offer} <br />
-        SharesAmount: {sharesAmount} <br />
+    const pathParts = path.match(/^\/tab\/([0-9]+)/)
+    const pageIndex = Array.isArray(pathParts)
+        ? parseInt(pathParts[1], 10) - 1
+        : 0
 
-
-        <TextInput.Number
-          label="Amount (wei)"
-          value={amount}
-          onChange={ event => setAmount(parseInt(event.target.value), 10) }
+    return (
+        <Main>
+        {isSyncing && <SyncIndicator/>}
+        <Header
+            primary="AssetShare"
         />
-        <TextInput
-          label="Message"
-          value={message}
-          onChange={ event => setMessage(event.target.value) }
-        /> <br />
-        <Buttons>
-          <Button
-            display="label"
-            label="Make payment"
-            onClick={() => api.payment(message, {'value': amount}).toPromise()}
-          />
-          <Button
-            display="label"
-            label="Treasury deposit"
-            onClick={() => api.treasuryDeposit(message, {'value': amount}).toPromise()}
-          />
+        <Tabs
+            items={['Tab 1', 'Tab 2']}
+            selected={pageIndex}
+            onChange={index => requestPath(`/tab/${index + 1}`)}
+        />
+        <Box>
+            TreasuryBalance: {treasuryBalance} <br/>
+            Funds: {funds} <br/>
+            Number of offers: {length} <br/>
 
-        </Buttons>
 
-        <Button
-          display="label"
-          label="Sell offer"
-          onClick={() => api.offerToSell(10, 1000,'0x8401Eb5ff34cc943f096A32EF3d5113FEbE8D4Eb', 10000000).toPromise()}
-      />
-      </Box>
-    </Main>
-  )
+            <TextInput.Number
+                label="Amount (wei)"
+                value={amount}
+                onChange={event => setAmount(parseInt(event.target.value), 10)}
+            />
+            <TextInput
+                label="Message"
+                value={message}
+                onChange={event => setMessage(event.target.value)}
+            /> <br/>
+            <Buttons>
+                <Button
+                    display="label"
+                    label="Make payment"
+                    onClick={() => api.payment(message, {'value': amount}).toPromise()}
+                />
+                <Button
+                    display="label"
+                    label="Treasury deposit"
+                    onClick={() => api.treasuryDeposit(message, {'value': amount}).toPromise()}
+                />
+                <Button
+                    display="label"
+                    label="Show array"
+                    onClick={() => console.log(offerList)}
+                />
+
+
+
+            </Buttons>
+            <Button
+                display="label"
+                label="Show latest offer"
+                onClick={() => console.log(offer)}
+            />
+            <Button
+                display="label"
+                label="Sell offer"
+                onClick={() => offerToSell(10, 2000, '0xb4124cEB3451635DAcedd11767f004d8a28c6eE7', 10000000)}
+            />
+        </Box>
+
+
+        {/*<DataView*/}
+        {/*    display="table"*/}
+        {/*    fields={['ID', 'Sender', 'Shares', 'Price']}*/}
+        {/*    entries={['1','2','3','4']}*/}
+        {/*    renderEntry={([ID,Sender,Shares,Price]) => {*/}
+        {/*        return [offer.seller, <IdentityBadge entity={offer.seller}/>, offer.shares, offer.price]*/}
+        {/*    }}*/}
+        {/*/>*/}
+
+
+        </Main>
+        )
+
+    function offerToSell(id, price, receiver, availabilityPeriod) {
+        api.offerToSell(id, price, receiver, availabilityPeriod).toPromise()
+    }
+
+
 }
+
 
 const Buttons = styled.div`
   display: grid;
