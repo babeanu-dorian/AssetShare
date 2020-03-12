@@ -8,7 +8,7 @@ contract CounterApp is AragonApp {
     event PAYMENT_RECEIVED(address sender, uint amount, string info);
     event TRESURY_DEPOSIT(address sender, uint amount, string info);
     event SELL_OFFER(address seller, uint amount);
-
+    event GET_SELL_OFFER(address seller, uint amount);
 
     enum OfferType {
         SELL,
@@ -16,7 +16,7 @@ contract CounterApp is AragonApp {
     }
 
     struct Offer {// describes an offer for selling / buying / gifting shares
-        uint id;                  // offer id (index in the offerList)
+        uint id;                  // offer id (index in the offerList.txt)
         OfferType offerType;      // the type of the offer (BUY or SELL)
         uint listPosition;        // position in the activeOffersList (MISSING if not active)
         address seller;           // address of the one making the offer
@@ -52,10 +52,10 @@ contract CounterApp is AragonApp {
     uint private lastPayday;                      // unix timestamp of last theoretical* payout
     //     *Time when the payout should have happened
 
-    Offer[] offerList;                            // list of all offers
+    Offer[] public offerList;                            // list of all offers
     uint[] private activeOffersList;              // list indexes of active ofers
 
-
+    Offer public offer;
 
     function initialize() public onlyInit {
 
@@ -70,6 +70,7 @@ contract CounterApp is AragonApp {
         lastPayday = block.timestamp;
 
         initialized();
+
     }
 
     // the ether produced by the asset(s) is sent by calling this function
@@ -89,25 +90,19 @@ contract CounterApp is AragonApp {
         return treasuryBalance;
     }
 
-    // returns the offer that is created by the seller
-    function getSellOffer() external returns (uint id,
-        OfferType offerType,
-        uint listPosition,
-        address seller,
-        address buyer,
-        uint shares,
-        uint price,
-        uint creationDate,
-        uint expirationDate,
-        uint completionDate){
-
-        Offer offer = offerList[offerList.length - 1];
-        return (offer.id, offer.offerType, offer.listPosition, offer.seller, offer.buyer, offer.shares, offer.price, offer.creationDate, offer.expirationDate, offer.completionDate);
-
+    function getAmountOfShares() external view returns (uint){
+        return ownershipMap[msg.sender];
     }
 
+//    // returns the offer that is created by the seller
+//    function getSellOfferList() external view returns (string){
+//        offer = offerList[0];
+//        string
+//        return price;
+//    }
 
-    function getShares() external returns (uint){
+
+    function getLengthOfList() external returns (uint){
         return offerList.length;
     }
 
@@ -131,7 +126,7 @@ contract CounterApp is AragonApp {
 
         // funds accumulated since last division
         uint funds = getFunds();
-        // send owners' gains
+        // send owners'offer gains
         for (uint i = 0; i != ownerList.length; ++i) {
             ownerList[i].send((funds * ownershipMap[ownerList[i]]) / TOTAL_SHARES);
         }
@@ -144,10 +139,10 @@ contract CounterApp is AragonApp {
         //
         require(sharesAmount > 0, "0-shares auctions are not allowed.");
         //    require(sharesAmount <= ownershipMap[msg.sender], "Caller does not own this many shares.");
-
+        offer = Offer(offerList.length, OfferType.SELL, activeOffersList.length, msg.sender, receiver,
+            sharesAmount, price, block.timestamp, block.timestamp + availabilityPeriod, 0);
         // create new SELL offer
-        offerList.push(Offer(offerList.length, OfferType.SELL, activeOffersList.length, msg.sender, receiver,
-            sharesAmount, price, block.timestamp, block.timestamp + availabilityPeriod, 0));
+        offerList.push(offer);
 
         // add it to the list of active offers
         activeOffersList.push(offerList.length - 1);
@@ -187,7 +182,7 @@ contract CounterApp is AragonApp {
             removeOwner(offer.seller);
         }
 
-        // complete offer
+        // complete offofferer
         offer.completionDate = block.timestamp;
         deactivateOffer(offerId);
     }
@@ -219,5 +214,8 @@ contract CounterApp is AragonApp {
         activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
         --activeOffersList.length;
     }
+
+
+
 
 }

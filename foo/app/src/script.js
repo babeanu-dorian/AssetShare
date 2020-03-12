@@ -3,14 +3,14 @@ import 'regenerator-runtime/runtime'
 import Aragon, {events} from '@aragon/api'
 
 const app = new Aragon()
-var offerList = [];
 
+// var offerList = [];
 app.store(
-    async (state, {event}) => {
+
+async (state, {event}) => {
         const nextState = {
             ...state,
         }
-
         try {
             switch (event) {
                 case 'PAYMENT_RECEIVED':
@@ -27,10 +27,12 @@ app.store(
                 case 'SELL_OFFER':
                     return {
                         ...nextState,
-                        length: await getLength(),
-                        offer: await getOffer(),
-                        offerList: await getList()
+                        offerList: await getSellOfferList(),
+                        sharesAmount: await getAmountOfShares(),
+                        length: await getLengthOfList(),
+                        offer: await getSellOfferList()
                     }
+
 
                 case events.SYNC_STATUS_SYNCING:
                     return {...nextState, isSyncing: true}
@@ -59,7 +61,8 @@ function initializeState() {
         return {
             ...cachedState,
             treasuryBalance: 0,
-            funds: 0
+            funds: 0,
+            sharesAmount:0
         }
     }
 }
@@ -72,16 +75,20 @@ async function getFunds() {
     return parseInt(await app.call('getFunds').toPromise(), 10);
 }
 
-async function getOffer() {
-    const value = await app.call('getSellOffer').toPromise();
-    offerList.push(value)
-    return value;
+
+
+async function getSellOfferList(){
+
+
+    return (await app.call('offerList',0).toPromise())
 }
 
-async function getLength() {
-    return parseInt(await app.call('getShares').toPromise(), 10);
+
+async function getAmountOfShares() {
+    return parseInt(await app.call('getAmountOfShares').toPromise(), 10);
+
 }
 
-async function getList() {
-    return offerList;
+async function getLengthOfList() {
+    return await app.call('getLengthOfList').toPromise();
 }

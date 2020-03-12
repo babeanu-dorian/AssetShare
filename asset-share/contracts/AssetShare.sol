@@ -14,7 +14,7 @@ contract AssetShare is AragonApp {
   }
 
   struct Offer {              // describes an offer for selling / buying / gifting shares
-    uint id;                  // offer id (index in the offerList)
+    uint id;                  // offer id (index in the offerList.txt)
     OfferType offerType;      // the type of the offer (BUY or SELL)
     uint listPosition;        // position in the activeOffersList (MISSING if not active)
     address seller;           // address of the one making the offer
