@@ -94,13 +94,12 @@ contract CounterApp is AragonApp {
         return ownershipMap[msg.sender];
     }
 
-//    // returns the offer that is created by the seller
-//    function getSellOfferList() external view returns (string){
-//        offer = offerList[0];
-//        string
-//        return price;
-//    }
+    function getAddressOfSender() external view returns (string){
 
+        return toString(msg.sender);
+
+//        return msg.sender;
+    }
 
     function getLengthOfList() external returns (uint){
         return offerList.length;
@@ -216,6 +215,11 @@ contract CounterApp is AragonApp {
     }
 
 
-
+    function toString(address x) returns (string) {
+        bytes memory b = new bytes(20);
+        for (uint i = 0; i < 20; i++)
+            b[i] = byte(uint8(uint(x) / (2**(8*(19 - i)))));
+        return string(b);
+    }
 
 }

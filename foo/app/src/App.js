@@ -22,7 +22,7 @@ import styled from 'styled-components'
 
 function App() {
     const {api, appState, path, requestPath} = useAragonApi()
-    const {treasuryBalance, funds, isSyncing,offerList,offer} = appState
+    const {treasuryBalance, funds, isSyncing,offerList,offer, owner} = appState
     const [amount, setAmount] = useState(0)
     const [message, setMessage] = useState('')
 
@@ -68,28 +68,20 @@ function App() {
                         label="Treasury deposit"
                         onClick={() => api.treasuryDeposit(message, {'value': amount}).toPromise()}
                     />
-                    <Button
-                        display="label"
-                        label="Show array"
-                        onClick={() => console.log(offerList)}
-                    />
-
 
                 </Buttons>
                 <Button
                     display="label"
                     label="Sell offer"
-                    onClick={() => offerToSell(10, 4000, '0xb4124cEB3451635DAcedd11767f004d8a28c6eE7', 10000000)}
+                    onClick={() => api.offerToSell(10, 4000, '0xb4124cEB3451635DAcedd11767f004d8a28c6eE7', 10000000).toPromise()}
                 />
                 <Button
                     display="label"
-                    label="Test offer to sell"
-                    // onClick={() => button()}
-                    onClick={() => console.log(offer)}
+                    label="Test owner"
+                    onClick={() => console.log(owner)}
                 />
 
             </Box>
-
             Offers that are on sale
             {getDataview()}
 
@@ -100,7 +92,6 @@ function App() {
 
 
     function getDataview() {
-        if(showList() != null){
             return (
                 <DataView
                     display="table"
@@ -112,8 +103,6 @@ function App() {
                     renderEntryActions={entryActions}
                 />
             )
-        }
-
     }
 
     // Return the contextual menu for an entry (no interaction behavior defined).
@@ -124,14 +113,10 @@ function App() {
             </ContextMenu>
         )
     }
-
-    function offerToSell(id, price, receiver, availabilityPeriod) {
-        api.offerToSell(id, price, receiver, availabilityPeriod).toPromise()
-    }
-
-    function button(){
-        console.log(offerList)
-    }
+    //
+    // function offerToSell(id, price, receiver, availabilityPeriod) {
+    //     api.offerToSell(id, price, receiver, availabilityPeriod).toPromise()
+    // }
 
 
     function showList() {
@@ -144,7 +129,7 @@ function App() {
                 }
                 return array
         } else {
-            return [['no data', 'no data', 'no data', 'no data']]
+            return [['', '', '', '']]
         }
     }
 

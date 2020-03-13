@@ -27,10 +27,11 @@ async (state, {event}) => {
                 case 'SELL_OFFER':
                     return {
                         ...nextState,
+                        length: await getLengthOfList(),
                         offerList: await getSellOfferList(),
                         sharesAmount: await getAmountOfShares(),
-                        length: await getLengthOfList(),
-                        offer: await getSellOfferList()
+                        offer: await getSellOfferList(),
+                        owner: await getOwner()
                     }
 
 
@@ -62,7 +63,8 @@ function initializeState() {
             ...cachedState,
             treasuryBalance: 0,
             funds: 0,
-            sharesAmount:0
+            sharesAmount:0,
+            length:0
         }
     }
 }
@@ -78,15 +80,26 @@ async function getFunds() {
 
 
 async function getSellOfferList(){
+    var length =  await( app.call('getLengthOfList').toPromise());
 
 
-    return (await app.call('offerList',0).toPromise())
+    var offerList = [];
+    for (let i = 0; i < length; i++) {
+        var offer = await app.call('offerList',i).toPromise()
+        offerList.push(offer)
+    }
+
+    return offerList
 }
 
 
 async function getAmountOfShares() {
     return parseInt(await app.call('getAmountOfShares').toPromise(), 10);
 
+}
+
+async function getOwner() {
+    return await app.call('getAddressOfSender').toPromise();
 }
 
 async function getLengthOfList() {
