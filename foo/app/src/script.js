@@ -83,15 +83,15 @@ async function getFunds() {
 
 
 async function getSellOfferList(){
-    var length =  await( app.call('getLengthOfList').toPromise());
+    // var length =  await( app.call('getLengthOfList').toPromise());
+    var length =  await( app.call('getLengthOfActiveList').toPromise());
 
 
     var offerList = [];
     for (let i = 0; i < length; i++) {
-        var offer = await app.call('offerList',i).toPromise()
+        var offer = await app.call('activeOffersList',i).toPromise()
         offerList.push(offer)
     }
-
     return offerList
 }
 

@@ -74,9 +74,13 @@ function App() {
                 <Button
                     display="label"
                     label="Sell offer"
-                    onClick={() => api.offerToSell(10, 3000, '0xb4124cEB3451635DAcedd11767f004d8a28c6eE7', 10000000).toPromise()}
+                    onClick={() => api.offerToSell(10, 100, '0xb4124cEB3451635DAcedd11767f004d8a28c6eE7', 1000000).toPromise()}
                 />
-
+                <Button
+                    display="label"
+                    label="Sell offer"
+                    onClick={() => console.log(sharesAmount)}
+                />
 
             </Box>
             Offers that are on sale
@@ -111,10 +115,9 @@ function App() {
     }
 
 
-    function buyShares(ID) {
-        api.buyShares(ID,{'value': amount}).toPromise()
-
-        // console.log(ID)
+    function buyShares(ID,Price) {
+        api.buyShares(ID,{'value': Price}).toPromise()
+        console.log(sharesAmount)
     }
 
 

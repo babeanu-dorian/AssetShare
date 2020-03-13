@@ -56,7 +56,7 @@ contract CounterApp is AragonApp {
     //     *Time when the payout should have happened
 
     Offer[] public offerList;                            // list of all offers
-    uint[] public activeOffersList;              // list indexes of active ofers
+    Offer[] public activeOffersList;                     // list indexes of active offers
 
     Offer public offer;
 
@@ -64,7 +64,9 @@ contract CounterApp is AragonApp {
 
         // contract creator starts as sole owner
         ownerList.push(address(0xb4124cEB3451635DAcedd11767f004d8a28c6eE7));
-        ownershipMap[0xb4124cEB3451635DAcedd11767f004d8a28c6eE7] = TOTAL_SHARES;
+        ownershipMap[0xb4124cEB3451635DAcedd11767f004d8a28c6eE7] = TOTAL_SHARES/2;
+        ownerList.push(address(0x8401Eb5ff34cc943f096A32EF3d5113FEbE8D4Eb));
+        ownershipMap[0x8401Eb5ff34cc943f096A32EF3d5113FEbE8D4Eb] = TOTAL_SHARES/2;
 
         // set default values
         treasuryBalance = 0;
@@ -95,12 +97,16 @@ contract CounterApp is AragonApp {
     }
 
     function getAmountOfShares() external view returns (uint){
-        return ownershipMap[msg.sender];
+        return ownershipMap[0x8401Eb5ff34cc943f096A32EF3d5113FEbE8D4Eb];
     }
 
 
     function getLengthOfList() external returns (uint){
         return offerList.length;
+    }
+
+    function getLengthOfActiveList() external returns (uint){
+        return activeOffersList.length;
     }
 
     // returns the amount of funds that will be split between shareholders upon the next payday
@@ -142,11 +148,12 @@ contract CounterApp is AragonApp {
         offerList.push(offer);
 
         // add it to the list of active offers
-//        activeOffersList.push()
+        activeOffersList.push(offer);
 
-        activeOffersList.push(offerList.length - 1);
+//        activeOffersList.push(offerList.length - 1);
         emit SELL_OFFER(msg.sender, sharesAmount);
     }
+
 
 
 
@@ -161,11 +168,13 @@ contract CounterApp is AragonApp {
 
         require(offer.listPosition != MISSING && block.timestamp < offer.expirationDate,
             "Offer is no longer active.");
-
+//
         if (offer.buyer != address(0)) {
             require(msg.sender == offer.buyer, "Caller is not the intended buyer.");
         }
 
+
+        //TODO: fix this
 //        require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
 
         // attempt to transfer funds to seller, revert if it fails
@@ -181,7 +190,7 @@ contract CounterApp is AragonApp {
             removeOwner(offer.seller);
         }
 
-        // complete offofferer
+        // complete offer
         offer.completionDate = block.timestamp;
         deactivateOffer(offerId);
 
@@ -212,8 +221,16 @@ contract CounterApp is AragonApp {
     function deactivateOffer(uint offerId) private {
         uint pos = offerList[offerId].listPosition;
         offerList[offerId].listPosition = MISSING;
-        activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
+
+
+        for (uint i = offerId; i<activeOffersList.length - 1;i++){
+            activeOffersList[i] = activeOffersList[i + 1];
+        }
+        delete activeOffersList[activeOffersList.length - 1 ];
+
+//        activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
         --activeOffersList.length;
+
     }
 
 
