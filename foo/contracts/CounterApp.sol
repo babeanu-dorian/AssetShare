@@ -9,6 +9,7 @@ contract CounterApp is AragonApp {
     event TRESURY_DEPOSIT(address sender, uint amount, string info);
     event SELL_OFFER(address seller, uint amount);
     event GET_SELL_OFFER(address seller, uint amount);
+    event BUY_OFFER(address buyer, uint amount);
 
     enum OfferType {
         SELL,
@@ -43,6 +44,8 @@ contract CounterApp is AragonApp {
     string[] private assetDescriptionList;                       // textual description of each asset
 
     mapping(address => uint) private ownershipMap;               // maps each address
+
+    //TODO: this is not working, why?
     address[] public ownerList;                                 // list of owner addresses
 
     uint private treasuryBalance;                 // wei in the treasury
@@ -53,15 +56,15 @@ contract CounterApp is AragonApp {
     //     *Time when the payout should have happened
 
     Offer[] public offerList;                            // list of all offers
-    uint[] private activeOffersList;              // list indexes of active ofers
+    uint[] public activeOffersList;              // list indexes of active ofers
 
     Offer public offer;
 
     function initialize() public onlyInit {
 
         // contract creator starts as sole owner
-        ownerList.push(address(uint160(msg.sender)));
-        ownershipMap[msg.sender] = TOTAL_SHARES;
+        ownerList.push(address(0xb4124cEB3451635DAcedd11767f004d8a28c6eE7));
+        ownershipMap[0xb4124cEB3451635DAcedd11767f004d8a28c6eE7] = TOTAL_SHARES;
 
         // set default values
         treasuryBalance = 0;
@@ -72,6 +75,7 @@ contract CounterApp is AragonApp {
         initialized();
 
     }
+
 
     // the ether produced by the asset(s) is sent by calling this function
     function payment(string info) external payable {
@@ -94,12 +98,6 @@ contract CounterApp is AragonApp {
         return ownershipMap[msg.sender];
     }
 
-    function getAddressOfSender() external view returns (string){
-
-        return toString(msg.sender);
-
-//        return msg.sender;
-    }
 
     function getLengthOfList() external returns (uint){
         return offerList.length;
@@ -137,13 +135,15 @@ contract CounterApp is AragonApp {
     function offerToSell(uint sharesAmount, uint price, address receiver, uint availabilityPeriod) external {
         //
         require(sharesAmount > 0, "0-shares auctions are not allowed.");
-        //    require(sharesAmount <= ownershipMap[msg.sender], "Caller does not own this many shares.");
+        require(sharesAmount <= ownershipMap[msg.sender], "Caller does not own this many shares.");
         offer = Offer(offerList.length, OfferType.SELL, activeOffersList.length, msg.sender, receiver,
             sharesAmount, price, block.timestamp, block.timestamp + availabilityPeriod, 0);
         // create new SELL offer
         offerList.push(offer);
 
         // add it to the list of active offers
+//        activeOffersList.push()
+
         activeOffersList.push(offerList.length - 1);
         emit SELL_OFFER(msg.sender, sharesAmount);
     }
@@ -166,7 +166,7 @@ contract CounterApp is AragonApp {
             require(msg.sender == offer.buyer, "Caller is not the intended buyer.");
         }
 
-        require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
+//        require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
 
         // attempt to transfer funds to seller, revert if it fails
         require(offer.seller.send(msg.value), "Funds could not be forwarded. Transaction denied.");
@@ -184,6 +184,8 @@ contract CounterApp is AragonApp {
         // complete offofferer
         offer.completionDate = block.timestamp;
         deactivateOffer(offerId);
+
+        emit BUY_OFFER(msg.sender, msg.value);
     }
 
     // removes an owner from the ownerList
@@ -214,12 +216,5 @@ contract CounterApp is AragonApp {
         --activeOffersList.length;
     }
 
-
-    function toString(address x) returns (string) {
-        bytes memory b = new bytes(20);
-        for (uint i = 0; i < 20; i++)
-            b[i] = byte(uint8(uint(x) / (2**(8*(19 - i)))));
-        return string(b);
-    }
 
 }

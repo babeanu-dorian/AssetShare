@@ -22,7 +22,7 @@ import styled from 'styled-components'
 
 function App() {
     const {api, appState, path, requestPath} = useAragonApi()
-    const {treasuryBalance, funds, isSyncing,offerList,offer, owner} = appState
+    const {treasuryBalance, funds, isSyncing, offerList, payoutPeriod, ownerList, sharesAmount} = appState
     const [amount, setAmount] = useState(0)
     const [message, setMessage] = useState('')
 
@@ -70,16 +70,13 @@ function App() {
                     />
 
                 </Buttons>
+                {/*//TODO: broadcast*/}
                 <Button
                     display="label"
                     label="Sell offer"
-                    onClick={() => api.offerToSell(10, 4000, '0xb4124cEB3451635DAcedd11767f004d8a28c6eE7', 10000000).toPromise()}
+                    onClick={() => api.offerToSell(10, 3000, '0xb4124cEB3451635DAcedd11767f004d8a28c6eE7', 10000000).toPromise()}
                 />
-                <Button
-                    display="label"
-                    label="Test owner"
-                    onClick={() => console.log(owner)}
-                />
+
 
             </Box>
             Offers that are on sale
@@ -88,46 +85,48 @@ function App() {
         </Main>
     )
 
-
-
-
     function getDataview() {
-            return (
-                <DataView
-                    display="table"
-                    fields={['ID', 'Sender', 'Shares', 'Price']}
-                    entries={showList()}
-                    renderEntry={([ID, Sender, Shares, Price]) => {
-                        return [ID, <IdentityBadge entity={Sender}/>, Shares, Price]
-                    }}
-                    renderEntryActions={entryActions}
-                />
-            )
+        return (
+            <DataView
+                display="table"
+                fields={['ID', 'Sender', 'Shares', 'Price']}
+                entries={showList()}
+                renderEntry={([ID, Sender, Shares, Price]) => {
+                    return [ID, <IdentityBadge entity={Sender}/>, Shares, Price]
+                }}
+                renderEntryActions={entryActions}
+            />
+        )
     }
 
     // Return the contextual menu for an entry (no interaction behavior defined).
-    function entryActions([account, balance]) {
+    function entryActions([ID]) {
         return (
             <ContextMenu>
-                <ContextMenuItem>Remove tokens</ContextMenuItem>
+                <ContextMenuItem
+                    onClick={() => buyShares(ID)}
+                >Buy shares</ContextMenuItem>
             </ContextMenu>
         )
     }
-    //
-    // function offerToSell(id, price, receiver, availabilityPeriod) {
-    //     api.offerToSell(id, price, receiver, availabilityPeriod).toPromise()
-    // }
+
+
+    function buyShares(ID) {
+        api.buyShares(ID,{'value': amount}).toPromise()
+
+        // console.log(ID)
+    }
 
 
     function showList() {
         var array = [];
         if (offerList != null) {
-                for (let i = 0; i < offerList.length; i++) {
-                    var offer = offerList[i];
-                    var insideArray = [offer.id, offer.seller, offer.shares, offer.price]
-                    array.push(insideArray)
-                }
-                return array
+            for (let i = 0; i < offerList.length; i++) {
+                var offer = offerList[i];
+                var insideArray = [offer.id, offer.seller, offer.shares, offer.price]
+                array.push(insideArray)
+            }
+            return array
         } else {
             return [['', '', '', '']]
         }

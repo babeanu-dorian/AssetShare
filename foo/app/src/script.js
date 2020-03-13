@@ -27,12 +27,15 @@ async (state, {event}) => {
                 case 'SELL_OFFER':
                     return {
                         ...nextState,
-                        length: await getLengthOfList(),
                         offerList: await getSellOfferList(),
-                        sharesAmount: await getAmountOfShares(),
-                        offer: await getSellOfferList(),
-                        owner: await getOwner()
+                        sharesAmount: await getAmountOfShares()
                     }
+                case 'BUY_OFFER':
+                    return {
+                        ...nextState,
+                        offerList: await getSellOfferList()
+                    }
+
 
 
                 case events.SYNC_STATUS_SYNCING:
@@ -96,12 +99,4 @@ async function getSellOfferList(){
 async function getAmountOfShares() {
     return parseInt(await app.call('getAmountOfShares').toPromise(), 10);
 
-}
-
-async function getOwner() {
-    return await app.call('getAddressOfSender').toPromise();
-}
-
-async function getLengthOfList() {
-    return await app.call('getLengthOfList').toPromise();
 }
