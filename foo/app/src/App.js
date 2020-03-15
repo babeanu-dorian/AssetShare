@@ -1,19 +1,21 @@
 import React, {useState} from 'react'
 import {useAragonApi} from '@aragon/api-react'
 import {
+    AddressField,
     Box,
     Button,
+    DataView,
     GU,
     Header,
     IconMinus,
     IconPlus,
+    IdentityBadge,
     Main,
     SyncIndicator,
     Tabs,
     Text,
     TextInput,
     textStyle,
-    DataView, IdentityBadge,
     ContextMenu,
     ContextMenuItem
 
@@ -21,16 +23,114 @@ import {
 import styled from 'styled-components'
 
 function App() {
-    const {api, appState, path, requestPath} = useAragonApi()
-    const {treasuryBalance, funds, isSyncing, offerList, payoutPeriod, ownerList, sharesAmount} = appState
-    const [amount, setAmount] = useState(0)
-    const [message, setMessage] = useState('')
+    const {api, appState, path} = useAragonApi();
+    const {treasuryBalance, funds, owners, offers, isSyncing} = appState;
+    const [selectedTab, setSelectedTab] = useState(0);
+    const [amount, setAmount] = useState(0);
+    const [message, setMessage] = useState('');
+    const [shares, setShares] = useState(0);
+    const [price, setPrice] = useState(0);
+    const [intendedBuyer, setIntendedBuyer] = useState('');
 
+    let selectedView;
 
-    const pathParts = path.match(/^\/tab\/([0-9]+)/)
-    const pageIndex = Array.isArray(pathParts)
-        ? parseInt(pathParts[1], 10) - 1
-        : 0
+    switch (selectedTab) {
+        case 0: //Payments
+            selectedView = (
+                <Box>
+                    TreasuryBalance: {treasuryBalance} <br/>
+                    Funds: {funds} <br/>
+
+                    Amount (wei): <TextInput.Number
+                        value={amount}
+                        onChange={event => setAmount(parseInt(event.target.value), 10)}
+                    /> <br/>
+                    Message: <TextInput
+                        value={message}
+                        onChange={event => setMessage(event.target.value)}
+                    /> <br/>
+                    <Buttons>
+                        <Button
+                            display="label"
+                            label="Make payment"
+                            onClick={() => api.payment(message, {'value': amount}).toPromise()}
+                        />
+                        <Button
+                            display="label"
+                            label="Deposit to treasury"
+                            onClick={() => api.treasuryDeposit(message, {'value': amount}).toPromise()}
+                        />
+                        <Button
+                            display="label"
+                            label="Distribute revenue"
+                            onClick={() => api.payOwners().toPromise()}
+                        />
+                    </Buttons>
+                </Box>
+            );
+            break;
+        case 1: //Owners
+            selectedView = (
+                <Box>
+                    <DataView
+                        display="table"
+                        fields={['Address', 'Shares', 'Shares on Sale']}
+                        entries={owners}
+                        renderEntry={({address, shares, sharesOnSale}) => {
+                            return [<IdentityBadge entity={address}/>, shares, sharesOnSale]
+                        }}
+                    />
+                </Box>
+            );
+            break;
+        case 2: //Offers
+            selectedView = (
+                <Box>
+                    Shares to sell: <TextInput.Number
+                        value={shares}
+                        onChange={event => setShares(parseInt(event.target.value), 10)}
+                    /> <br/>
+                    Price (wei): <TextInput.Number
+                        value={price}
+                        onChange={event => setPrice(parseInt(event.target.value), 10)}
+                    /> <br/>
+                    Intended buyer: <TextInput
+                        value={intendedBuyer}
+                        onChange={event => setIntendedBuyer(event.target.value)}
+                    /> <br/>
+                    <Buttons>
+                        <Button
+                            display="label"
+                            label="Publish Offer"
+                            onClick={() => api.offerToSell(shares, price, (intendedBuyer ? intendedBuyer : '0x0000000000000000000000000000000000000000')).toPromise()}
+                        />
+                    </Buttons>
+                    <DataView
+                        display="table"
+                        fields={['Id', 'Seller', 'Inteded Buyer', 'Shares', 'Price (wei)', 'Buy', 'Cancel']}
+                        entries={offers}
+                        renderEntry={({id, seller, buyer, shares, price}) => {
+                            return [id,
+                                    <IdentityBadge entity={seller}/>,
+                                    <IdentityBadge entity={buyer}/>,
+                                    shares,
+                                    price,
+                                    <Button
+                                        display="label"
+                                        label="Buy"
+                                        onClick={() => api.buyShares(id, {'value': price}).toPromise()}
+                                    />,
+                                    <Button
+                                        display="label"
+                                        label="Cancel"
+                                        onClick={() => api.cancelOffer(id).toPromise()}
+                                    />
+                            ]
+                        }}
+                    />
+                </Box>
+            )
+    }
 
     return (
         <Main>
@@ -39,104 +139,14 @@ function App() {
                 primary="AssetShare"
             />
             <Tabs
-                items={['Tab 1', 'Tab 2']}
-                selected={pageIndex}
-                onChange={index => requestPath(`/tab/${index + 1}`)}
+                items={['Payments', 'Owners', 'Offers', 'Proposals']}
+                selected={selectedTab}
+                onChange={setSelectedTab}
             />
-            <Box>
-                TreasuryBalance: {treasuryBalance} <br/>
-                Funds: {funds} <br/>
-
-                <TextInput.Number
-                    label="Amount (wei)"
-                    value={amount}
-                    onChange={event => setAmount(parseInt(event.target.value), 10)}
-                />
-                <TextInput
-                    label="Message"
-                    value={message}
-                    onChange={event => setMessage(event.target.value)}
-                /> <br/>
-                <Buttons>
-                    <Button
-                        display="label"
-                        label="Make payment"
-                        onClick={() => api.payment(message, {'value': amount}).toPromise()}
-                    />
-                    <Button
-                        display="label"
-                        label="Treasury deposit"
-                        onClick={() => api.treasuryDeposit(message, {'value': amount}).toPromise()}
-                    />
-
-                </Buttons>
-                {/*//TODO: broadcast*/}
-                <Button
-                    display="label"
-                    label="Sell offer"
-                    onClick={() => api.offerToSell(10, 100, '0xb4124cEB3451635DAcedd11767f004d8a28c6eE7', 1000000).toPromise()}
-                />
-                <Button
-                    display="label"
-                    label="Sell offer"
-                    onClick={() => console.log(sharesAmount)}
-                />
-
-            </Box>
-            Offers that are on sale
-            {getDataview()}
-
+            {selectedView}
         </Main>
     )
-
-    function getDataview() {
-        return (
-            <DataView
-                display="table"
-                fields={['ID', 'Sender', 'Shares', 'Price']}
-                entries={showList()}
-                renderEntry={([ID, Sender, Shares, Price]) => {
-                    return [ID, <IdentityBadge entity={Sender}/>, Shares, Price]
-                }}
-                renderEntryActions={entryActions}
-            />
-        )
-    }
-
-    // Return the contextual menu for an entry (no interaction behavior defined).
-    function entryActions([ID]) {
-        return (
-            <ContextMenu>
-                <ContextMenuItem
-                    onClick={() => buyShares(ID)}
-                >Buy shares</ContextMenuItem>
-            </ContextMenu>
-        )
-    }
-
-
-    function buyShares(ID,Price) {
-        api.buyShares(ID,{'value': Price}).toPromise()
-        console.log(sharesAmount)
-    }
-
-
-    function showList() {
-        var array = [];
-        if (offerList != null) {
-            for (let i = 0; i < offerList.length; i++) {
-                var offer = offerList[i];
-                var insideArray = [offer.id, offer.seller, offer.shares, offer.price]
-                array.push(insideArray)
-            }
-            return array
-        } else {
-            return [['', '', '', '']]
-        }
-    }
-
 }
-
 
 const Buttons = styled.div`
   display: grid;

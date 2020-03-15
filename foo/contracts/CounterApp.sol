@@ -7,16 +7,23 @@ contract CounterApp is AragonApp {
     // Events
     event PAYMENT_RECEIVED(address sender, uint amount, string info);
     event TRESURY_DEPOSIT(address sender, uint amount, string info);
-    event SELL_OFFER(address seller, uint amount);
-    event GET_SELL_OFFER(address seller, uint amount);
-    event BUY_OFFER(address buyer, uint amount);
+    event OWNERS_PAID();
+    event NEW_OFFER(uint id);
+    event COMPLETED_OFFER(uint id);
+    event CANCELLED_OFFER(uint id);
+
+    struct Owner {               // used to store shareholder information
+        uint shares;             // amount of shares owned by shareholder
+        uint sharesOnSale;       // amount of the owner's shares currently on sale
+        uint listPosition;       // position in the ownerList
+    }
 
     enum OfferType {
         SELL,
         BUY
     }
 
-    struct Offer {// describes an offer for selling / buying / gifting shares
+    struct Offer {                // describes an offer for selling / buying / gifting shares
         uint id;                  // offer id (index in the offerList.txt)
         OfferType offerType;      // the type of the offer (BUY or SELL)
         uint listPosition;        // position in the activeOffersList (MISSING if not active)
@@ -25,48 +32,40 @@ contract CounterApp is AragonApp {
         uint shares;              // amount of offered shares
         uint price;               // price of the shares in wei (set to 0 for gift)
         uint creationDate;        // unix timestamp of the date when the offer was published
-        uint expirationDate;      // unix timestamp of the date when the offer expires
-        uint completionDate;      // unix timestamp of the date when the shares were transfered
+        uint completionDate;      // unix timestamp of the date when the shares were transfered or the offer was cancelled
+        bool cancelled;           // whether or not the offer was cancelled
     }
 
     uint constant public MISSING = ~uint256(0);                  // max uint value, signals missing data
     uint constant public TOTAL_SHARES = 1000000;                 // total number of ownership shares
     uint constant public TREASURY_RATIO_DENOMINATOR = 1000000;   // the ratio of ether placed in the treasury
-    // = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
-    uint public offerId = 0;
-
+                                                                 // = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
 
     uint constant private DEFAULT_TREASURY_RATIO = 100000;       // default value of treasuryRatio
     uint constant private DEFAULT_PAYOUT_PERIOD = 60;            // default value of payoutPeriod
 
+    string private assetDescription;                             // textual description of the asset
 
+    address[] private ownerList;                                 // list of owner addresses
+    mapping(address => Owner) private ownershipMap;              // maps each address to its respective owner information
 
-    string[] private assetDescriptionList;                       // textual description of each asset
+    uint private treasuryBalance;               // wei in the treasury
+    uint private treasuryRatio;                 // the ratio of ether placed in the treasury
+                                                //     = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
+    uint private payoutPeriod;                  // time interval between shareholder payout (in seconds)
+    uint private lastPayday;                    // unix timestamp of last theoretical* payout
+                                                //     *Time when the payout should have happened
 
-    mapping(address => uint) private ownershipMap;               // maps each address
-
-    //TODO: this is not working, why?
-    address[] public ownerList;                                 // list of owner addresses
-
-    uint private treasuryBalance;                 // wei in the treasury
-    uint private treasuryRatio;                   // the ratio of ether placed in the treasury
-    //     = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
-    uint private payoutPeriod;                    // time interval between shareholder payout (in seconds)
-    uint private lastPayday;                      // unix timestamp of last theoretical* payout
-    //     *Time when the payout should have happened
-
-    Offer[] public offerList;                            // list of all offers
-    Offer[] public activeOffersList;                     // list indexes of active offers
-
-    Offer public offer;
+    Offer[] private offerList;                  // list of all offers
+    uint[] private activeOffersList;            // list of indexes of active offers
 
     function initialize() public onlyInit {
 
+        // TODO: pass this in as parameter
+        address initialOwner = address(0xb4124cEB3451635DAcedd11767f004d8a28c6eE7);
+
         // contract creator starts as sole owner
-        ownerList.push(address(0xb4124cEB3451635DAcedd11767f004d8a28c6eE7));
-        ownershipMap[0xb4124cEB3451635DAcedd11767f004d8a28c6eE7] = TOTAL_SHARES/2;
-        ownerList.push(address(0x8401Eb5ff34cc943f096A32EF3d5113FEbE8D4Eb));
-        ownershipMap[0x8401Eb5ff34cc943f096A32EF3d5113FEbE8D4Eb] = TOTAL_SHARES/2;
+        addOwner(initialOwner, TOTAL_SHARES);
 
         // set default values
         treasuryBalance = 0;
@@ -78,11 +77,69 @@ contract CounterApp is AragonApp {
 
     }
 
+    function getShares(address owner) external view returns (uint) {
+        return ownershipMap[owner].shares;
+    }
+
+    function getShares() external view returns (uint) {
+        return ownershipMap[msg.sender].shares;
+    }
+
+    function getSharesOnSale(address owner) external view returns (uint) {
+        return ownershipMap[owner].sharesOnSale;
+    }
+
+    function getSharesOnSale() external view returns (uint) {
+        return ownershipMap[msg.sender].sharesOnSale;
+    }
+
+    function getOwnersCount() external view returns (uint) {
+        return ownerList.length;
+    }
+
+    function getOwnerAddressByIndex(uint idx) external view returns (address) {
+        return ownerList[idx];
+    }
+
+    // creates a new owner
+    function addOwner(address ownerAddress, uint shares) private {
+        ownershipMap[ownerAddress] = Owner(shares, 0, ownerList.length);
+        ownerList.push(ownerAddress);
+    }
+
+    // removes an owner from the ownerList
+    function removeOwner(address ownerAddress) private {
+        uint pos = ownershipMap[ownerAddress].listPosition;
+        ownerList[pos] = ownerList[ownerList.length - 1];
+        ownershipMap[ownerList[pos]].listPosition = pos;
+        --ownerList.length;
+    }
 
     // the ether produced by the asset(s) is sent by calling this function
     function payment(string info) external payable {
         treasuryBalance += (msg.value * treasuryRatio) / TREASURY_RATIO_DENOMINATOR;
         emit PAYMENT_RECEIVED(msg.sender, msg.value, info);
+    }
+
+    // checks if at least one payout period has passed, and if it did,
+    // it divides the contract balance between the shareholders
+    function payOwners() external {
+        uint timeElapsed = block.timestamp - lastPayday;
+        require(timeElapsed >= payoutPeriod, "There is still time until the next payday.");
+        // account for multiple payout periods
+        lastPayday = block.timestamp - (timeElapsed % payoutPeriod);
+        divideAndTransferFunds();
+        emit OWNERS_PAID();
+    }
+
+    // divides the contract balance between the treasury and the shareholders
+    function divideAndTransferFunds() private {
+        // funds accumulated since last division
+        uint funds = getFunds();
+        // send owners'offer gains
+        for (uint i = 0; i != ownerList.length; ++i) {
+            ownerList[i].send((funds * ownershipMap[ownerList[i]].shares) / TOTAL_SHARES);
+        }
     }
 
     // a way to deposit money directly into the treasury
@@ -96,66 +153,30 @@ contract CounterApp is AragonApp {
         return treasuryBalance;
     }
 
-    function getAmountOfShares() external view returns (uint){
-        return ownershipMap[0x8401Eb5ff34cc943f096A32EF3d5113FEbE8D4Eb];
-    }
-
-
-    function getLengthOfList() external returns (uint){
-        return offerList.length;
-    }
-
-    function getLengthOfActiveList() external returns (uint){
-        return activeOffersList.length;
-    }
-
     // returns the amount of funds that will be split between shareholders upon the next payday
     function getFunds() public view returns (uint) {
         return address(this).balance - treasuryBalance;
     }
 
-    // checks if at least one payout period has passed, and if it did, it divides the contract balance between the treasury
-    // and the shareholders
-    function payOwners() external {
-        uint timeElapsed = block.timestamp - lastPayday;
-        require(timeElapsed >= payoutPeriod, "There is still time until the next payday.");
-        // account for multiple payout periods
-        lastPayday = block.timestamp - (timeElapsed % payoutPeriod);
-        divideAndTransferFunds();
-    }
-
-    // divides the contract balance between the treasury and the shareholders
-    function divideAndTransferFunds() private {
-
-        // funds accumulated since last division
-        uint funds = getFunds();
-        // send owners'offer gains
-        for (uint i = 0; i != ownerList.length; ++i) {
-            ownerList[i].send((funds * ownershipMap[ownerList[i]]) / TOTAL_SHARES);
-        }
-    }
-
     // publishes a new SELL offer (transfer of shares from an owner to a buyer for a price)
     // use 0 for the receiver address to let anyone purchase the shares
     // set the price to 0 for gift
-    function offerToSell(uint sharesAmount, uint price, address receiver, uint availabilityPeriod) external {
-        //
+    function offerToSell(uint sharesAmount, uint price, address receiver) external {
+
         require(sharesAmount > 0, "0-shares auctions are not allowed.");
-        require(sharesAmount <= ownershipMap[msg.sender], "Caller does not own this many shares.");
-        offer = Offer(offerList.length, OfferType.SELL, activeOffersList.length, msg.sender, receiver,
-            sharesAmount, price, block.timestamp, block.timestamp + availabilityPeriod, 0);
-        // create new SELL offer
-        offerList.push(offer);
+        require(sharesAmount  + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares,
+            "Caller does not own this many shares.");
 
-        // add it to the list of active offers
-        activeOffersList.push(offer);
+        // create new active SELL offer
+        offerList.push(Offer(offerList.length, OfferType.SELL, activeOffersList.length, msg.sender,
+                              receiver, sharesAmount, price, block.timestamp, 0, false));
+        activeOffersList.push(offerList.length - 1);
 
-//        activeOffersList.push(offerList.length - 1);
-        emit SELL_OFFER(msg.sender, sharesAmount);
+        // adjust seller's amount of shares on sale
+        ownershipMap[msg.sender].sharesOnSale += sharesAmount;
+
+        emit NEW_OFFER(offerList.length - 1);
     }
-
-
-
 
     // allows the caller to complete a SELL offer and performs the exchange of shares and ether
     // if any of the requirements fail, the transaction (including the transferred money) is reverted
@@ -166,46 +187,32 @@ contract CounterApp is AragonApp {
 
         require(offer.offerType == OfferType.SELL, "Offer is not a sale.");
 
-        require(offer.listPosition != MISSING && block.timestamp < offer.expirationDate,
-            "Offer is no longer active.");
-//
-        if (offer.buyer != address(0)) {
-            require(msg.sender == offer.buyer, "Caller is not the intended buyer.");
-        }
+        require(offer.listPosition != MISSING, "Offer is no longer active.");
 
+        require(offer.buyer == address(0) || offer.buyer == msg.sender, "Caller is not the intended buyer.");
 
-        //TODO: fix this
-//        require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
+        require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
 
         // attempt to transfer funds to seller, revert if it fails
         require(offer.seller.send(msg.value), "Funds could not be forwarded. Transaction denied.");
 
         // transfer shares
-        if (ownershipMap[msg.sender] == 0) {
-            ownerList.push(msg.sender);
+        if (ownershipMap[msg.sender].shares == 0) {
+            addOwner(msg.sender, offer.shares);
+        } else {
+            ownershipMap[msg.sender].shares += offer.shares;
         }
-        ownershipMap[msg.sender] += offer.shares;
-        ownershipMap[offer.seller] -= offer.shares;
-        if (ownershipMap[offer.seller] == 0) {
+        ownershipMap[offer.seller].shares -= offer.shares;
+        if (ownershipMap[offer.seller].shares == 0) {
             removeOwner(offer.seller);
         }
 
         // complete offer
+        offer.buyer = msg.sender;
         offer.completionDate = block.timestamp;
         deactivateOffer(offerId);
 
-        emit BUY_OFFER(msg.sender, msg.value);
-    }
-
-    // removes an owner from the ownerList
-    function removeOwner(address owner) private {
-        for (uint i = 0; i != ownerList.length; ++i) {
-            if (ownerList[i] == owner) {
-                ownerList[i] = ownerList[ownerList.length - 1];
-                --ownerList.length;
-                return;
-            }
-        }
+        emit COMPLETED_OFFER(offerId);
     }
 
     // deactivates an active auction owned by the caller
@@ -214,24 +221,64 @@ contract CounterApp is AragonApp {
         require(msg.sender == offerList[offerId].seller, "Caller does not own this offer.");
         require(offerList[offerId].listPosition != MISSING, "Offer is already inactive.");
 
+        offerList[offerId].cancelled = true;
         deactivateOffer(offerId);
+        emit CANCELLED_OFFER(offerId);
     }
 
     // removes an auction from the list of active auctions
     function deactivateOffer(uint offerId) private {
-        uint pos = offerList[offerId].listPosition;
-        offerList[offerId].listPosition = MISSING;
+        Offer storage offer = offerList[offerId];
 
-
-        for (uint i = offerId; i<activeOffersList.length - 1;i++){
-            activeOffersList[i] = activeOffersList[i + 1];
+        if (offer.offerType == OfferType.SELL) {
+            ownershipMap[offer.seller].sharesOnSale -= offer.shares;
         }
-        delete activeOffersList[activeOffersList.length - 1 ];
 
-//        activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
+        uint pos = offer.listPosition;
+        offer.listPosition = MISSING;
+        activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
+        offerList[activeOffersList[pos]].listPosition = pos;
         --activeOffersList.length;
-
     }
 
+    function getActiveOffersCount() external view returns (uint) {
+        return activeOffersList.length;
+    }
 
+    function getOffersCount() external view returns (uint) {
+        return offerList.length;
+    }
+
+    function getActiveOfferByIndex(uint idx) external view returns (uint id,
+                                                                    string offerType,
+                                                                    address seller,
+                                                                    address buyer,
+                                                                    uint shares,
+                                                                    uint price,
+                                                                    uint creationDate,
+                                                                    uint completionDate,
+                                                                    bool cancelled) {
+        return getOffer(activeOffersList[idx]);
+    }
+
+    function getOffer(uint offerId) public view returns (uint id,
+                                                         string offerType,
+                                                         address seller,
+                                                         address buyer,
+                                                         uint shares,
+                                                         uint price,
+                                                         uint creationDate,
+                                                         uint completionDate,
+                                                         bool cancelled) {
+        Offer storage offer = offerList[offerId];
+        id = offer.id;
+        offerType = (offer.offerType == OfferType.SELL ? "SELL" : "BUY");
+        seller = offer.seller;
+        buyer = offer.buyer;
+        shares = offer.shares;
+        price = offer.price;
+        creationDate = offer.creationDate;
+        completionDate = offer.completionDate;
+        cancelled = offer.cancelled;
+    }
 }

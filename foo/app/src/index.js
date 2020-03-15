@@ -8,8 +8,9 @@ const reducer = state => {
     return {
     	treasuryBalance: 0,
     	funds: 0,
-    	isSyncing: true,
-        offerList:0
+      owners: [],
+      offers: [],
+    	isSyncing: true
     }
   }
   return state

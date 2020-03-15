@@ -185,6 +185,7 @@ contract AssetShare is AragonApp {
     uint pos = offerList[offerId].listPosition;
     offerList[offerId].listPosition = MISSING;
     activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
+    offerList[activeOffersList[pos]].listPosition = pos;
     --activeOffersList.length;
   }
 }
