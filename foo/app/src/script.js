@@ -62,12 +62,17 @@ function initializeState() {
     return async cachedState => {
         return {
             ...cachedState,
+            TOTAL_SHARES: await getTotalShares(),
             treasuryBalance: await getTreasuryBalance(),
             funds: await getFunds(),
             owners: await getOwners(),
             offers: await getActiveOffers()
         }
     }
+}
+
+async function getTotalShares() {
+    return parseInt(await app.call('TOTAL_SHARES').toPromise(), 10);
 }
 
 async function getTreasuryBalance() {

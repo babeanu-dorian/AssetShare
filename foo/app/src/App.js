@@ -24,13 +24,26 @@ import styled from 'styled-components'
 
 function App() {
     const {api, appState, path} = useAragonApi();
-    const {treasuryBalance, funds, owners, offers, isSyncing} = appState;
+    const {TOTAL_SHARES, treasuryBalance, funds, owners, offers, isSyncing} = appState;
     const [selectedTab, setSelectedTab] = useState(0);
     const [amount, setAmount] = useState(0);
     const [message, setMessage] = useState('');
     const [shares, setShares] = useState(0);
     const [price, setPrice] = useState(0);
     const [intendedBuyer, setIntendedBuyer] = useState('');
+    const anyAddress = '0x0000000000000000000000000000000000000000';
+
+    function sharesToPercentage(shares) {
+        return shares * 100 / TOTAL_SHARES;
+    }
+
+    function percentageToShares(percentage) {
+        return percentage * TOTAL_SHARES / 100;
+    }
+
+    function displayAddress(address) {
+        return (address == anyAddress ? '-' : <IdentityBadge entity={address}/>);
+    }
 
     let selectedView;
 
@@ -74,10 +87,10 @@ function App() {
                 <Box>
                     <DataView
                         display="table"
-                        fields={['Address', 'Shares', 'Shares on Sale']}
+                        fields={['Address', 'Shares (%)', 'Shares on Sale (%)']}
                         entries={owners}
                         renderEntry={({address, shares, sharesOnSale}) => {
-                            return [<IdentityBadge entity={address}/>, shares, sharesOnSale]
+                            return [displayAddress(address), sharesToPercentage(shares), sharesToPercentage(sharesOnSale)]
                         }}
                     />
                 </Box>
@@ -86,7 +99,7 @@ function App() {
         case 2: //Offers
             selectedView = (
                 <Box>
-                    Shares to sell: <TextInput.Number
+                    Shares to sell (%): <TextInput.Number
                         value={shares}
                         onChange={event => setShares(parseInt(event.target.value), 10)}
                     /> <br/>
@@ -102,18 +115,18 @@ function App() {
                         <Button
                             display="label"
                             label="Publish Offer"
-                            onClick={() => api.offerToSell(shares, price, (intendedBuyer ? intendedBuyer : '0x0000000000000000000000000000000000000000')).toPromise()}
+                            onClick={() => api.offerToSell(percentageToShares(shares), price, (intendedBuyer ? intendedBuyer : anyAddress)).toPromise()}
                         />
                     </Buttons>
                     <DataView
                         display="table"
-                        fields={['Id', 'Seller', 'Inteded Buyer', 'Shares', 'Price (wei)', 'Buy', 'Cancel']}
+                        fields={['Id', 'Seller', 'Inteded Buyer', 'Shares (%)', 'Price (wei)', 'Buy', 'Cancel']}
                         entries={offers}
                         renderEntry={({id, seller, buyer, shares, price}) => {
                             return [id,
-                                    <IdentityBadge entity={seller}/>,
-                                    <IdentityBadge entity={buyer}/>,
-                                    shares,
+                                    displayAddress(seller),
+                                    displayAddress(buyer),
+                                    sharesToPercentage(shares),
                                     price,
                                     <Button
                                         display="label"

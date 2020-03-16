@@ -6,6 +6,7 @@ import App from './App'
 const reducer = state => {
   if (state === null) {
     return {
+      TOTAL_SHARES: 0,
     	treasuryBalance: 0,
     	funds: 0,
       owners: [],
