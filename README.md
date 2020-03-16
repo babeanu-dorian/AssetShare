@@ -20,3 +20,11 @@ Install ipfs:
 sudo npm install go-ipfs@0.4.22 --global
 ipfs init
 ```
+
+### Run the application
+
+In the application project folder, run:
+```
+npm install
+npm start
+```
