@@ -1,9 +1,7 @@
-node_modules
-build
-.cache
-dist
-ipfs.cmd
+node_modules/
+build/
+.cache/
+dist/
 package-lock.json
 coverage.json
 coverage
-.cache
