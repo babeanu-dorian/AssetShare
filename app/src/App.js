@@ -17,7 +17,7 @@ import {
     TextInput,
     textStyle,
     ContextMenu,
-    ContextMenuItem
+    ContextMenuItem, DropDown
 
 } from '@aragon/ui'
 import styled from 'styled-components'
@@ -47,6 +47,28 @@ function App() {
 
     let selectedView;
 
+
+    function onlySpecificOffers(sellOrBuy) {
+        var temp = [];
+        if (sellOrBuy === "SELL"){
+            for (let i = 0; i <offers.length; i++) {
+                if(offers[i].offerType === "SELL"){
+                    temp.push(offers[i])
+                }
+            }
+            return temp
+        }
+        if (sellOrBuy === "BUY"){
+            for (let i = 0; i <offers.length; i++) {
+                if(offers[i].offerType === "BUY"){
+                    temp.push(offers[i])
+                }
+            }
+            return temp
+        }
+
+    }
+
     switch (selectedTab) {
         case 0: //Payments
             selectedView = (
@@ -55,13 +77,13 @@ function App() {
                     Funds: {funds} <br/>
 
                     Amount (wei): <TextInput.Number
-                        value={amount}
-                        onChange={event => setAmount(parseInt(event.target.value), 10)}
-                    /> <br/>
+                    value={amount}
+                    onChange={event => setAmount(parseInt(event.target.value), 10)}
+                /> <br/>
                     Message: <TextInput
-                        value={message}
-                        onChange={event => setMessage(event.target.value)}
-                    /> <br/>
+                    value={message}
+                    onChange={event => setMessage(event.target.value)}
+                /> <br/>
                     <Buttons>
                         <Button
                             display="label"
@@ -99,18 +121,19 @@ function App() {
         case 2: //Offers
             selectedView = (
                 <Box>
-                    Shares to sell (%): <TextInput.Number
-                        value={shares}
-                        onChange={event => setShares(parseInt(event.target.value), 10)}
-                    /> <br/>
+                    Shares to sell
+                    (%): <TextInput.Number
+                    value={shares}
+                    onChange={event => setShares(parseInt(event.target.value), 10)}
+                /> <br/>
                     Price (wei): <TextInput.Number
-                        value={price}
-                        onChange={event => setPrice(parseInt(event.target.value), 10)}
-                    /> <br/>
+                    value={price}
+                    onChange={event => setPrice(parseInt(event.target.value), 10)}
+                /> <br/>
                     Intended buyer: <TextInput
-                        value={intendedBuyer}
-                        onChange={event => setIntendedBuyer(event.target.value)}
-                    /> <br/>
+                    value={intendedBuyer}
+                    onChange={event => setIntendedBuyer(event.target.value)}
+                /> <br/>
                     <Buttons>
                         <Button
                             display="label"
@@ -120,24 +143,78 @@ function App() {
                     </Buttons>
                     <DataView
                         display="table"
-                        fields={['Id', 'Seller', 'Inteded Buyer', 'Shares (%)', 'Price (wei)', 'Buy', 'Cancel']}
-                        entries={offers}
+                        fields={['Id', 'Seller', 'Intended Buyer', 'Shares (%)', 'Price (wei)', 'Buy', 'Cancel']}
+                        entries={onlySpecificOffers("SELL")}
                         renderEntry={({id, seller, buyer, shares, price}) => {
                             return [id,
-                                    displayAddress(seller),
-                                    displayAddress(buyer),
-                                    sharesToPercentage(shares),
-                                    price,
-                                    <Button
-                                        display="label"
-                                        label="Buy"
-                                        onClick={() => api.buyShares(id, {'value': price}).toPromise()}
-                                    />,
-                                    <Button
-                                        display="label"
-                                        label="Cancel"
-                                        onClick={() => api.cancelOffer(id).toPromise()}
-                                    />
+                                displayAddress(seller),
+                                displayAddress(buyer),
+                                sharesToPercentage(shares),
+                                price,
+                                <Button
+                                    display="label"
+                                    label="Buy"
+                                    onClick={() => api.buyShares(id, {'value': price}).toPromise()}
+                                />,
+                                <Button
+                                    display="label"
+                                    label="Cancel"
+                                    onClick={() => api.cancelOffer(id).toPromise()}
+                                />
+                            ]
+                        }}
+                    />
+                </Box>
+            )
+            break;
+        case 3: //Buy Offers
+            selectedView = (
+                <Box>
+                    Shares to buy (%): <TextInput.Number
+                    value={shares}
+                    onChange={event => setShares(parseInt(event.target.value), 10)}
+                /> <br/>
+                    Price (wei): <TextInput.Number
+                    value={price}
+                    onChange={event => setPrice(parseInt(event.target.value), 10)}
+                /> <br/>
+                    Intended buyer: <TextInput
+                    value={intendedBuyer}
+                    onChange={event => setIntendedBuyer(event.target.value)}
+                /> <br/>
+                    <Buttons>
+                        <Button
+                            display="label"
+                            label="Publish Offer"
+                            onClick={() => api.offerToBuy(percentageToShares(shares), price, (intendedBuyer ? intendedBuyer : anyAddress)).toPromise()}
+                        />
+                        <Button
+                            display="console log"
+                            label="Cancel"
+                            onClick={console.log(offers)}
+                        />
+                    </Buttons>
+                    <DataView
+                        display="table"
+                        fields={['Id', 'Buyer', 'Intended Seller', 'Shares (%)', 'Price (wei)', 'Sell', 'Cancel']}
+                        entries={onlySpecificOffers("BUY")}
+                        renderEntry={({id, seller, buyer, shares, price}) => {
+                            console.log(percentageToShares(shares))
+                            return [id,
+                                displayAddress(seller),
+                                displayAddress(buyer),
+                                sharesToPercentage(shares),
+                                price,
+                                <Button
+                                    display="label"
+                                    label="Sell"
+                                    onClick={() => api.offerToSell(shares, price, seller).toPromise()}
+                                />,
+                                <Button
+                                    display="label"
+                                    label="Cancel"
+                                    onClick={() => api.cancelOffer(id).toPromise()}
+                                />
                             ]
                         }}
                     />
@@ -152,7 +229,7 @@ function App() {
                 primary="AssetShare"
             />
             <Tabs
-                items={['Payments', 'Owners', 'Offers', 'Proposals']}
+                items={['Payments', 'Owners', 'Sell Offers', 'Buy Offers']}
                 selected={selectedTab}
                 onChange={setSelectedTab}
             />
@@ -160,6 +237,7 @@ function App() {
         </Main>
     )
 }
+
 
 const Buttons = styled.div`
   display: grid;
