@@ -30,11 +30,30 @@ async (state, {event}) => {
                 case 'NEW_OFFER':
                 case 'COMPLETED_OFFER':
                 case 'CANCELLED_OFFER':
-                    await getActiveOffers();
                     return {
                         ...nextState,
                         owners: await getOwners(),
-                        offers: await getActiveOffers()
+                        offers: await getActiveOffers(),
+                        proposals: await getActiveProposals()
+                    }
+                case 'NEW_PEOPOSAL':
+                case 'CANCELLED_PROPOSAL':
+                case 'SUPPORT_TRANSFERRED':
+                    return {
+                        ...nextState,
+                        supportedProposal: await getSupportedProposal(),
+                        proposals: await getActiveProposals()
+                    }
+                case 'EXECUTED_PROPOSAL':
+                    return {
+                        ...nextState,
+                        assetDescription: await getAssetDescription(),
+                        treasuryRatio: await getTreasuryRatio(),
+                        payoutPeriod: await getPayoutPeriod(),
+                        proposalApprovalThreshold: await getProposalApprovalThreshold(),
+                        treasuryBalance: await getTreasuryBalance(),
+                        supportedProposal: await getSupportedProposal(),
+                        proposals: await getActiveProposals()
                     }
                 case events.SYNC_STATUS_SYNCING:
                     return {...nextState, isSyncing: true}
@@ -63,10 +82,18 @@ function initializeState() {
         return {
             ...cachedState,
             TOTAL_SHARES: await getTotalShares(),
+            TREASURY_RATIO_DENOMINATOR: await getTreasuryRatioDenominator(),
+            functionIds: await getTaskFunctionValues(),
+            assetDescription: await getAssetDescription(),
+            treasuryRatio: await getTreasuryRatio(),
+            payoutPeriod: await getPayoutPeriod(),
+            proposalApprovalThreshold: await getProposalApprovalThreshold(),
             treasuryBalance: await getTreasuryBalance(),
             funds: await getFunds(),
+            supportedProposal: await getSupportedProposal(),
             owners: await getOwners(),
-            offers: await getActiveOffers()
+            offers: await getActiveOffers(),
+            proposals: await getActiveProposals()
         }
     }
 }
@@ -75,12 +102,44 @@ async function getTotalShares() {
     return parseInt(await app.call('TOTAL_SHARES').toPromise(), 10);
 }
 
+async function getTreasuryRatioDenominator() {
+    return parseInt(await app.call('TREASURY_RATIO_DENOMINATOR').toPromise(), 10);
+}
+
+async function getTaskFunctionValues() {
+    let temp = await app.call('getTaskFunctionValues').toPromise();
+    console.log(temp);
+    return temp;
+}
+
+async function getAssetDescription() {
+    return await app.call('getAssetDescription').toPromise();
+}
+
+async function getTreasuryRatio() {
+    return await app.call('getTreasuryRatio').toPromise();
+}
+
+async function getPayoutPeriod() {
+    return await app.call('getPayoutPeriod').toPromise();
+}
+
+async function getProposalApprovalThreshold() {
+    return await app.call('getProposalApprovalThreshold').toPromise();
+}
+
 async function getTreasuryBalance() {
     return parseInt(await app.call('getTreasuryBalance').toPromise(), 10);
 }
 
 async function getFunds() {
     return parseInt(await app.call('getFunds').toPromise(), 10);
+}
+
+async function getSupportedProposal() {
+    let temp = parseInt(await app.call('getSupportedProposal').toPromise(), 10);
+    console.log('Supported proposal: ' + temp);
+    return temp;
 }
 
 async function getOwners() {
@@ -104,4 +163,13 @@ async function getActiveOffers() {
         offers.push(await app.call('getActiveOfferByIndex', i).toPromise());
     }
     return offers;
+}
+
+async function getActiveProposals() {
+    let count = parseInt(await app.call('getActiveProposalsCount').toPromise(), 10);
+    let proposals = [];
+    for (let i = 0; i != count; ++i) {
+        proposals.push(await app.call('getActiveProposalByIndex', i).toPromise());
+    }
+    return proposals;
 }

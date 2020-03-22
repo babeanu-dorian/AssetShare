@@ -11,11 +11,16 @@ contract AssetShareApp is AragonApp {
     event NEW_OFFER(uint id);
     event COMPLETED_OFFER(uint id);
     event CANCELLED_OFFER(uint id);
+    event NEW_PROPOSAL(uint id);
+    event EXECUTED_PROPOSAL(uint id);
+    event CANCELLED_PROPOSAL(uint id);
+    event SUPPORT_TRANSFERRED(address voter, uint oldPropId, uint newPropId);
 
     struct Owner {               // used to store shareholder information
         uint shares;             // amount of shares owned by shareholder
         uint sharesOnSale;       // amount of the owner's shares currently on sale
         uint listPosition;       // position in the ownerList
+        uint supportedProposal;  // the id of the proposal currently supported
     }
 
     enum OfferType {
@@ -32,17 +37,50 @@ contract AssetShareApp is AragonApp {
         uint shares;              // amount of offered shares
         uint price;               // price of the shares in wei (set to 0 for gift)
         uint creationDate;        // unix timestamp of the date when the offer was published
-        uint completionDate;      // unix timestamp of the date when the shares were transfered or the offer was cancelled
+        uint completionDate;      // unix timestamp of the date when the shares were transferred or the offer was cancelled
         bool cancelled;           // whether or not the offer was cancelled
+    }
+
+    enum TaskFunction {                  // describes specific functions that can be used with tasks
+        CHANGE_APPROVAL_TRESHOLD,        // edit the value of proposalApprovalThreshold
+        CHANGE_ASSET_DESCRIPTION,        // edit the value of assetDescription
+        CHANGE_PAYOUT_PERIOD,            // edit the value of payoutPeriod
+        CHANGE_TREASURY_RATIO,           // edit the value of treasuryRatio
+        EXECUTE_EXTERNAL_CONTRACT,       // execute a function on an external contract (may use treasury funds)
+        SEND_MONEY                       // send money from the treasury to an address
+    }
+
+    struct Task {                        // describes some executable instructions
+        TaskFunction functionId;         // determines which function is called
+        uint uintArg;                    // uint argument to be passed to the function
+        string stringArg;                // string argument to be passed to the function
+        address addressArg;              // address argument to be passed to the function
+    }
+
+    struct Proposal {                    // describes a proposal for changing the configurations of
+                                         //     this contract, or for executing an external contract
+        uint id;                         // proposal id
+        address owner;                   // address of the owner who made the proposal
+        uint listPosition;               // index in the activeProposalList
+                                         //     (MISSING if not active)
+        string reason;                   // reasons provided for the change
+        Task task;                       // instructions to execute if the proposal is approved
+        uint support;                    // total amount of shares voting 'yes'
+        uint creationDate;               // unix timestamp of the date when the proposal was made
+        uint completionDate;             // unix timestamp of the date when the proposal was approved
+        bool cancelled;                  // whether or not the proposal was cancelled
     }
 
     uint constant public MISSING = ~uint256(0);                  // max uint value, signals missing data
     uint constant public TOTAL_SHARES = 1000000;                 // total number of ownership shares
-    uint constant public TREASURY_RATIO_DENOMINATOR = 1000000;   // the ratio of ether placed in the treasury
-                                                                 // = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
+    uint constant public TREASURY_RATIO_DENOMINATOR              // the ratio of ether placed in the treasury
+                                      = TOTAL_SHARES;            // = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
 
-    uint constant private DEFAULT_TREASURY_RATIO = 100000;       // default value of treasuryRatio
+    uint constant private DEFAULT_TREASURY_RATIO                 // default value of treasuryRatio
+                                      = TREASURY_RATIO_DENOMINATOR / 10;
     uint constant private DEFAULT_PAYOUT_PERIOD = 60;            // default value of payoutPeriod
+    uint constant private DEFAULT_APPROVAL_TRESHOLD              // default value of proposalApprovalThreshold
+                                      = TOTAL_SHARES / 2 + 1;
 
     string private assetDescription;                             // textual description of the asset
 
@@ -59,6 +97,10 @@ contract AssetShareApp is AragonApp {
     Offer[] private offerList;                  // list of all offers
     uint[] private activeOffersList;            // list of indexes of active offers
 
+    Proposal[] proposalList;                    // list of all proposals
+    uint[] private activeProposalsList;         // list of id's of ongoing proposals
+    uint private proposalApprovalThreshold;     // amount of votes required to approve a proposal
+
     function initialize() public onlyInit {
 
         // TODO: pass this in as parameter
@@ -72,9 +114,20 @@ contract AssetShareApp is AragonApp {
         treasuryRatio = DEFAULT_TREASURY_RATIO;
         payoutPeriod = DEFAULT_PAYOUT_PERIOD;
         lastPayday = block.timestamp;
+        proposalApprovalThreshold = DEFAULT_APPROVAL_TRESHOLD;
 
         initialized();
 
+    }
+
+    function getAssetDescription() external view returns (string) {
+        return assetDescription;
+    }
+
+    //*****************************OWNERS****************************************************
+
+    function requireOwner(string errorMsg) private view {
+        require(ownershipMap[msg.sender].shares > 0, errorMsg);
     }
 
     function getShares(address owner) external view returns (uint) {
@@ -93,6 +146,14 @@ contract AssetShareApp is AragonApp {
         return ownershipMap[msg.sender].sharesOnSale;
     }
 
+    function getSupportedProposal(address owner) external view returns (uint) {
+        return ownershipMap[owner].supportedProposal;
+    }
+
+    function getSupportedProposal() external view returns (uint) {
+        return ownershipMap[msg.sender].supportedProposal;
+    }
+
     function getOwnersCount() external view returns (uint) {
         return ownerList.length;
     }
@@ -101,9 +162,34 @@ contract AssetShareApp is AragonApp {
         return ownerList[idx];
     }
 
+    // increase the amount of shares for a given address;
+    // if that address was not previously an owner, it becomes one;
+    // proposal support is adjusted based on new amount of shares
+    function increaseShares(address ownerAddress, uint amount) private {
+        Owner storage owner = ownershipMap[ownerAddress];
+        if (owner.shares == 0) {
+            addOwner(ownerAddress, amount);
+        } else {
+            owner.shares += amount;
+            increaseProposalSupport(owner.supportedProposal, amount);
+        }
+    }
+
+    // decrease the amount of shares for a given owner;
+    // if the owner is left without shares, they are removed from the list of owners;
+    // proposal support is adjusted based on new amount of shares
+    function decreaseShares(address ownerAddress, uint amount) private {
+        Owner storage owner = ownershipMap[ownerAddress];
+        owner.shares -= amount;
+        if (owner.shares == 0) {
+            removeOwner(ownerAddress);
+        }
+        decreaseProposalSupport(owner.supportedProposal, amount);
+    }
+
     // creates a new owner
     function addOwner(address ownerAddress, uint shares) private {
-        ownershipMap[ownerAddress] = Owner(shares, 0, ownerList.length);
+        ownershipMap[ownerAddress] = Owner(shares, 0, ownerList.length, MISSING);
         ownerList.push(ownerAddress);
     }
 
@@ -114,6 +200,8 @@ contract AssetShareApp is AragonApp {
         ownershipMap[ownerList[pos]].listPosition = pos;
         --ownerList.length;
     }
+
+    //*****************************PAYMENTS****************************************************
 
     // the ether produced by the asset(s) is sent by calling this function
     function payment(string info) external payable {
@@ -153,10 +241,20 @@ contract AssetShareApp is AragonApp {
         return treasuryBalance;
     }
 
+    function getTreasuryRatio() external view returns (uint) {
+        return treasuryRatio;
+    }
+
     // returns the amount of funds that will be split between shareholders upon the next payday
     function getFunds() public view returns (uint) {
         return address(this).balance - treasuryBalance;
     }
+
+    function getPayoutPeriod() public view returns (uint) {
+        return payoutPeriod;
+    }
+
+    //*****************************OFFERS****************************************************
 
     // publishes a new SELL offer (transfer of shares from an owner to a buyer for a price)
     // use 0 for the receiver address to let anyone purchase the shares
@@ -197,19 +295,11 @@ contract AssetShareApp is AragonApp {
         require(offer.seller.send(msg.value), "Funds could not be forwarded. Transaction denied.");
 
         // transfer shares
-        if (ownershipMap[msg.sender].shares == 0) {
-            addOwner(msg.sender, offer.shares);
-        } else {
-            ownershipMap[msg.sender].shares += offer.shares;
-        }
-        ownershipMap[offer.seller].shares -= offer.shares;
-        if (ownershipMap[offer.seller].shares == 0) {
-            removeOwner(offer.seller);
-        }
+        increaseShares(msg.sender, offer.shares);
+        decreaseShares(offer.seller, offer.shares);
 
         // complete offer
         offer.buyer = msg.sender;
-        offer.completionDate = block.timestamp;
         deactivateOffer(offerId);
 
         emit COMPLETED_OFFER(offerId);
@@ -229,6 +319,7 @@ contract AssetShareApp is AragonApp {
     // removes an auction from the list of active auctions
     function deactivateOffer(uint offerId) private {
         Offer storage offer = offerList[offerId];
+        offer.completionDate = block.timestamp;
 
         if (offer.offerType == OfferType.SELL) {
             ownershipMap[offer.seller].sharesOnSale -= offer.shares;
@@ -258,6 +349,7 @@ contract AssetShareApp is AragonApp {
                                                                     uint creationDate,
                                                                     uint completionDate,
                                                                     bool cancelled) {
+        require(idx < activeOffersList.length, "Invalid active offer index.");
         return getOffer(activeOffersList[idx]);
     }
 
@@ -270,6 +362,7 @@ contract AssetShareApp is AragonApp {
                                                          uint creationDate,
                                                          uint completionDate,
                                                          bool cancelled) {
+        require(offerId < offerList.length, "Invalid offer id.");
         Offer storage offer = offerList[offerId];
         id = offer.id;
         offerType = (offer.offerType == OfferType.SELL ? "SELL" : "BUY");
@@ -280,5 +373,237 @@ contract AssetShareApp is AragonApp {
         creationDate = offer.creationDate;
         completionDate = offer.completionDate;
         cancelled = offer.cancelled;
+    }
+
+    //*****************************PROPOSALS****************************************************
+
+    function getProposalApprovalThreshold() external view returns (uint) {
+        return proposalApprovalThreshold;
+    }
+
+    function getTaskFunctionValues() external pure returns (TaskFunction CHANGE_APPROVAL_TRESHOLD,
+                                                            TaskFunction CHANGE_ASSET_DESCRIPTION,
+                                                            TaskFunction CHANGE_PAYOUT_PERIOD,
+                                                            TaskFunction CHANGE_TREASURY_RATIO,
+                                                            TaskFunction EXECUTE_EXTERNAL_CONTRACT,
+                                                            TaskFunction SEND_MONEY) {
+        CHANGE_APPROVAL_TRESHOLD = TaskFunction.CHANGE_APPROVAL_TRESHOLD;
+        CHANGE_ASSET_DESCRIPTION = TaskFunction.CHANGE_ASSET_DESCRIPTION;
+        CHANGE_PAYOUT_PERIOD = TaskFunction.CHANGE_PAYOUT_PERIOD;
+        CHANGE_TREASURY_RATIO = TaskFunction.CHANGE_TREASURY_RATIO;
+        EXECUTE_EXTERNAL_CONTRACT = TaskFunction.EXECUTE_EXTERNAL_CONTRACT;
+        SEND_MONEY = TaskFunction.SEND_MONEY;
+    }
+
+    // publishes a new proposal, automatically transfers the publisher's support to the new proposal
+    function makeProposal(string reason, uint functionId, uint uintArg, string stringArg, address addressArg) external {
+        
+        requireOwner("Only owners can make proposals.");
+        
+        validateProposalArgs(TaskFunction(functionId), uintArg, stringArg, addressArg);
+
+        uint id = proposalList.length;
+
+        // create new active proposal
+        proposalList.push(Proposal(id, msg.sender, activeProposalsList.length, reason,
+                                    Task(TaskFunction(functionId), uintArg, stringArg, addressArg),
+                                    0, block.timestamp, 0, false));
+        activeProposalsList.push(id);
+
+        emit NEW_PROPOSAL(id);
+
+        // proposal publisher starts with 'yes' vote
+        transferProposalSupport(msg.sender, id);
+    }
+
+    function validateProposalArgs(TaskFunction functionId, uint uintArg, string stringArg, address addressArg) private pure {
+
+        require(functionId != TaskFunction.CHANGE_APPROVAL_TRESHOLD || uintArg < TOTAL_SHARES,
+                "Approval threshold cannot exceed 100%");
+        require(functionId != TaskFunction.CHANGE_TREASURY_RATIO || uintArg < TREASURY_RATIO_DENOMINATOR,
+                "Treasury ratio cannot exceed 100%");
+    }
+
+    // implements a 'yes' vote,
+    // if the caller is already supporting a different proposal, their support is transferred
+    function supportProposal(uint id) external {
+
+        requireOwner("Only owners can vote.");
+
+        require(id < proposalList.length, "Invalid proposal id.");
+
+        require(proposalList[id].listPosition != MISSING, "The proposal is no longer active.");
+
+        transferProposalSupport(msg.sender, id);
+    }
+
+    // revokes support from the proposal currently supported by the caller
+    function revokeProposalSupport() external {
+        // check for owner not necessary
+        transferProposalSupport(msg.sender, MISSING);
+    }
+
+    // transfers the support of the given owner from the current proposal to another one
+    function transferProposalSupport(address ownerAddress, uint propId) private {
+
+        Owner storage owner = ownershipMap[ownerAddress];
+
+        // revoke support from current 
+        decreaseProposalSupport(owner.supportedProposal, owner.shares);
+        increaseProposalSupport(propId, owner.shares);
+        emit SUPPORT_TRANSFERRED(ownerAddress, owner.supportedProposal, propId);
+        owner.supportedProposal = propId;
+    }
+
+    function increaseProposalSupport(uint id, uint amount) private {
+        if (id >= proposalList.length) {
+            return; // invalid proposal id
+        }
+
+        if (proposalList[id].listPosition == MISSING) {
+            return; // inactive proposal
+        }
+
+
+        proposalList[id].support += amount;
+    }
+
+    function decreaseProposalSupport(uint id, uint amount) private {
+        if (id >= proposalList.length) {
+            return; // invalid proposal id
+        }
+
+        if (proposalList[id].listPosition == MISSING) {
+            return; // inactive proposal
+        }
+
+        proposalList[id].support -= amount;
+    }
+
+    function executeProposal(uint id) external {
+        require(id < proposalList.length, "Invalid proposal id.");
+
+        Proposal storage proposal = proposalList[id];
+
+        require(proposal.listPosition != MISSING, "The proposal is no longer active.");
+
+        require(proposal.support >= proposalApprovalThreshold, "The proposal does not have enough support.");
+
+        // execute proposal task
+
+        TaskFunction functionId = proposal.task.functionId;
+
+        if (functionId == TaskFunction.CHANGE_APPROVAL_TRESHOLD) {
+
+            proposalApprovalThreshold = proposal.task.uintArg;
+
+        } else if (functionId == TaskFunction.CHANGE_ASSET_DESCRIPTION) {
+
+            assetDescription = proposal.task.stringArg;
+
+        } else if (functionId == TaskFunction.CHANGE_PAYOUT_PERIOD) {
+
+            payoutPeriod = proposal.task.uintArg;
+
+        } else if (functionId == TaskFunction.CHANGE_TREASURY_RATIO) {
+
+            treasuryRatio = proposal.task.uintArg;
+
+        } else if (functionId == TaskFunction.EXECUTE_EXTERNAL_CONTRACT) {
+
+            require(proposal.task.uintArg <= treasuryBalance, "Insufficient treasury funds.");
+            // attempt to call external function, revert if it fails
+            require(
+                proposal.task.addressArg.call.value(proposal.task.uintArg)(
+                    abi.encodeWithSignature(proposal.task.stringArg)
+                ),
+                "Something went wrong when calling external contract, transaction denied."
+            );
+            treasuryBalance -= proposal.task.uintArg;
+
+        } else if (functionId == TaskFunction.SEND_MONEY) {
+
+            require(proposal.task.uintArg <= treasuryBalance, "Insufficient treasury funds.");
+            // attempt to transfer funds to seller, revert if it fails
+            require(proposal.task.addressArg.send(proposal.task.uintArg),
+                "Funds could not be sent, transaction denied.");
+            treasuryBalance -= proposal.task.uintArg;
+        }
+
+        deactivateProposal(id);
+
+        emit EXECUTED_PROPOSAL(id);
+    }
+
+    // deactivates an active proposal owned by the caller
+    function cancelProposal(uint id) external {
+        require(id < proposalList.length, "Invalid proposal id.");
+        require(msg.sender == proposalList[id].owner, "Caller does not own this proposal.");
+        require(proposalList[id].listPosition != MISSING, "Proposal is already inactive.");
+
+        proposalList[id].cancelled = true;
+        deactivateProposal(id);
+        emit CANCELLED_PROPOSAL(id);
+    }
+
+    // removes a proposal from the list of active proposals
+    function deactivateProposal(uint id) private {
+        Proposal storage proposal = proposalList[id];
+        proposal.completionDate = block.timestamp;
+
+        uint pos = proposal.listPosition;
+        proposal.listPosition = MISSING;
+        activeProposalsList[pos] = activeProposalsList[activeProposalsList.length - 1];
+        proposalList[activeProposalsList[pos]].listPosition = pos;
+        --activeProposalsList.length;
+    }
+
+    function getActiveProposalsCount() external view returns (uint) {
+        return activeProposalsList.length;
+    }
+
+    function getProposalsCount() external view returns (uint) {
+        return proposalList.length;
+    }
+
+    function getActiveProposalByIndex(uint idx) external view returns (uint id,
+                                                                       address owner,
+                                                                       string reason,
+                                                                       TaskFunction functionId,
+                                                                       uint uintArg,
+                                                                       string stringArg,
+                                                                       address addressArg,
+                                                                       uint support,
+                                                                       uint creationDate,
+                                                                       uint completionDate,
+                                                                       bool cancelled) {
+        require(idx < activeProposalsList.length, "Invalid active proposal index.");
+        return getProposal(activeProposalsList[idx]);
+    }
+
+    function getProposal(uint propId) public view returns (uint id,
+                                                           address owner,
+                                                           string reason,
+                                                           TaskFunction functionId,
+                                                           uint uintArg,
+                                                           string stringArg,
+                                                           address addressArg,
+                                                           uint support,
+                                                           uint creationDate,
+                                                           uint completionDate,
+                                                           bool cancelled) {
+        require(propId < proposalList.length, "Invalid proposal id.");
+        Proposal storage proposal = proposalList[propId];
+        id = proposal.id;
+        owner = proposal.owner;
+        reason = proposal.reason;
+        functionId = proposal.task.functionId;
+        uintArg = proposal.task.uintArg;
+        stringArg = proposal.task.stringArg;
+        addressArg = proposal.task.addressArg;
+        support = proposal.support;
+        creationDate = proposal.creationDate;
+        completionDate = proposal.completionDate;
+        cancelled = proposal.cancelled;
     }
 }
