@@ -158,11 +158,22 @@ contract AssetShareApp is AragonApp {
         return address(this).balance - treasuryBalance;
     }
 
+
+    function offerToBuy(uint sharesAmount, uint price, address receiver) external {
+        require(sharesAmount > 0, "0-shares auctions are not allowed.");
+
+        offerList.push(Offer(offerList.length, OfferType.BUY, activeOffersList.length, msg.sender,
+            receiver, sharesAmount, price, block.timestamp, 0, false));
+        activeOffersList.push(offerList.length - 1);
+
+        emit NEW_OFFER(offerList.length - 1);
+    }
+
+
     // publishes a new SELL offer (transfer of shares from an owner to a buyer for a price)
     // use 0 for the receiver address to let anyone purchase the shares
     // set the price to 0 for gift
     function offerToSell(uint sharesAmount, uint price, address receiver) external {
-
         require(sharesAmount > 0, "0-shares auctions are not allowed.");
         require(sharesAmount  + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares,
             "Caller does not own this many shares.");
