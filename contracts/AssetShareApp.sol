@@ -77,7 +77,7 @@ contract AssetShareApp is AragonApp {
 
     }
 
-    function getShares(address owner) external view returns (uint) {
+    function getSharesByAddress(address owner) external view returns (uint) {
         return ownershipMap[owner].shares;
     }
 

@@ -90,7 +90,7 @@ async function getOwners() {
         let address = await app.call('getOwnerAddressByIndex', i).toPromise();
         owners.push({
             'address': address,
-            'shares': parseInt(await app.call('getShares', address).toPromise(), 10),
+            'shares': parseInt(await app.call('getSharesByAddress', address).toPromise(), 10),
             'sharesOnSale': parseInt(await app.call('getSharesOnSale', address).toPromise(), 10)
         });
     }
