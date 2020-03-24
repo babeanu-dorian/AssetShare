@@ -191,29 +191,30 @@ contract AssetShareApp is AragonApp {
 
     // allows the caller to complete a SELL offer and performs the exchange of shares and ether
     // if any of the requirements fail, the transaction (including the transferred money) is reverted
-    function buyShares(uint offerId) external payable {
+    function buyShares(uint offerId, uint shares) external payable {
         require(offerId < offerList.length, "Invalid offer id.");
-
         Offer storage offer = offerList[offerId];
 
-        require(offer.offerType == OfferType.SELL, "Offer is not a sale.");
+        require(shares > 0, "No shares");
+        require(shares <= offer.shares, "more than offered shares");
 
+        require(offer.offerType == OfferType.SELL, "Offer is not a sale.");
         require(offer.listPosition != MISSING, "Offer is no longer active.");
 
         require(offer.buyer == address(0) || offer.buyer == msg.sender, "Caller is not the intended buyer.");
 
-        require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
+//      require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
 
         // attempt to transfer funds to seller, revert if it fails
         require(offer.seller.send(msg.value), "Funds could not be forwarded. Transaction denied.");
 
         // transfer shares
         if (ownershipMap[msg.sender].shares == 0) {
-            addOwner(msg.sender, offer.shares);
+            addOwner(msg.sender, shares);
         } else {
-            ownershipMap[msg.sender].shares += offer.shares;
+            ownershipMap[msg.sender].shares += shares;
         }
-        ownershipMap[offer.seller].shares -= offer.shares;
+        ownershipMap[offer.seller].shares -= shares;
         if (ownershipMap[offer.seller].shares == 0) {
             removeOwner(offer.seller);
         }
@@ -221,8 +222,14 @@ contract AssetShareApp is AragonApp {
         // complete offer
         offer.buyer = msg.sender;
         offer.completionDate = block.timestamp;
-        deactivateOffer(offerId);
 
+        if (shares == offer.shares){
+            deactivateOffer(offerId);
+        } else {
+            offer.buyer = address(0);
+            offer.shares = offer.shares - shares;
+            offer.price = offer.price - msg.value;
+        }
         emit COMPLETED_OFFER(offerId);
     }
 
