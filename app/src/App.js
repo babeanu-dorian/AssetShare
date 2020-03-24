@@ -17,7 +17,7 @@ import {
     TextInput,
     textStyle,
     ContextMenu,
-    ContextMenuItem, DropDown
+    ContextMenuItem, DropDown, SidePanel
 
 } from '@aragon/ui'
 import styled from 'styled-components'
@@ -30,8 +30,12 @@ function App() {
     const [message, setMessage] = useState('');
     const [shares, setShares] = useState(0);
     const [price, setPrice] = useState(0);
+    const [newShares,setNewShares] = useState(0);
+    const [newPrice, setNewPrice] = useState(0);
     const [intendedBuyer, setIntendedBuyer] = useState('');
     const anyAddress = '0x0000000000000000000000000000000000000000';
+
+    const [opened, setOpened] = useState(false);
 
     function sharesToPercentage(shares) {
         return shares * 100 / TOTAL_SHARES;
@@ -45,22 +49,36 @@ function App() {
         return (address == anyAddress ? '-' : <IdentityBadge entity={address}/>);
     }
 
+    function calculatePrice(price,shares) {
+        if(newShares == "NaN"){
+            return 0
+        }
+        if(newShares == 0){
+            return 0
+        }
+        if (newShares == shares){
+            return price;
+        } else {
+            return (percentageToShares(newShares) / shares) * price;
+        }
+    }
+
     let selectedView;
 
 
     function onlySpecificOffers(sellOrBuy) {
         var temp = [];
-        if (sellOrBuy === "SELL"){
-            for (let i = 0; i <offers.length; i++) {
-                if(offers[i].offerType === "SELL"){
+        if (sellOrBuy === "SELL") {
+            for (let i = 0; i < offers.length; i++) {
+                if (offers[i].offerType === "SELL") {
                     temp.push(offers[i])
                 }
             }
             return temp
         }
-        if (sellOrBuy === "BUY"){
-            for (let i = 0; i <offers.length; i++) {
-                if(offers[i].offerType === "BUY"){
+        if (sellOrBuy === "BUY") {
+            for (let i = 0; i < offers.length; i++) {
+                if (offers[i].offerType === "BUY") {
                     temp.push(offers[i])
                 }
             }
@@ -68,6 +86,7 @@ function App() {
         }
 
     }
+
 
     switch (selectedTab) {
         case 0: //Payments
@@ -143,18 +162,27 @@ function App() {
                     </Buttons>
                     <DataView
                         display="table"
-                        fields={['Id', 'Seller', 'Intended Buyer', 'Shares (%)', 'Price (wei)', 'Buy', 'Cancel']}
+                        fields={['Id', 'Seller', 'Intended Buyer', 'Shares (%)', 'Price (wei)', 'Partial','Buy', 'Cancel']}
                         entries={onlySpecificOffers("SELL")}
                         renderEntry={({id, seller, buyer, shares, price}) => {
                             return [id,
                                 displayAddress(seller),
                                 displayAddress(buyer),
                                 sharesToPercentage(shares),
-                                price,
+                                calculatePrice(price,shares),
+                                <TextInput.Number
+                                    value={newShares}
+                                    onChange={event => {
+                                        setNewShares(parseInt(event.target.value), 10)
+                                    }}
+                                />,
                                 <Button
                                     display="label"
                                     label="Buy"
-                                    onClick={() => api.buyShares(id, {'value': price}).toPromise()}
+                                    onClick={() => {
+                                        api.buyShares(id, percentageToShares(newShares), {'value': (calculatePrice(price,shares))}).toPromise()
+                                    }
+                                    }
                                 />,
                                 <Button
                                     display="label"
@@ -186,29 +214,30 @@ function App() {
                         <Button
                             display="label"
                             label="Publish Offer"
-                            onClick={() => api.offerToBuy(percentageToShares(shares), price, (intendedBuyer ? intendedBuyer : anyAddress)).toPromise()}
-                        />
-                        <Button
-                            display="console log"
-                            label="Cancel"
-                            onClick={console.log(offers)}
+                            onClick={() =>
+                                api.offerToBuy(percentageToShares(shares), price, (intendedBuyer ? intendedBuyer : anyAddress)).toPromise()}
                         />
                     </Buttons>
                     <DataView
                         display="table"
-                        fields={['Id', 'Buyer', 'Intended Seller', 'Shares (%)', 'Price (wei)', 'Sell', 'Cancel']}
+                        fields={['Id', 'Buyer', 'Intended Seller', 'Shares (%)', 'Price (wei)', 'Partial shares', 'Sell', 'Cancel']}
                         entries={onlySpecificOffers("BUY")}
                         renderEntry={({id, seller, buyer, shares, price}) => {
-                            console.log(percentageToShares(shares))
                             return [id,
                                 displayAddress(seller),
                                 displayAddress(buyer),
                                 sharesToPercentage(shares),
                                 price,
+                                <TextInput.Number
+                                    value={newShares}
+                                    onChange={event => {
+                                        setNewShares(parseInt(event.target.value), 10)
+                                    }}
+                                />,
                                 <Button
                                     display="label"
                                     label="Sell"
-                                    onClick={() => api.offerToSell(shares, price, seller).toPromise()}
+                                    onClick={() => api.offerToSell(percentageToShares(newShares), calculatePrice(price,shares), seller).toPromise()}
                                 />,
                                 <Button
                                     display="label"
