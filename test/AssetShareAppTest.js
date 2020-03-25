@@ -4,7 +4,7 @@ const { assertRevert } = require('@aragon/test-helpers/assertThrow')
 const { hash } = require('eth-ens-namehash')
 const deployDAO = require('./helpers/deployDAO')
 
-const AssetShareApp = artifacts.require('AssetShareApp.sol')
+const AssetShareApp = artifacts.require('AssetShareAppHelper.sol')
 
 const ANY_ADDRESS = '0xffffffffffffffffffffffffffffffffffffffff'
 const ADDRESS_1 = '0x0000000000000000000000000000000000000001'
@@ -18,7 +18,7 @@ const getLog = (receipt, logName, argName) => {
 
 const deployedContract = receipt => getLog(receipt, 'NewAppProxy', 'proxy')
 
-contract('AssetShareApp', ([appManager, user1, user2]) => {
+contract('AssetShareAppHelper', ([appManager, user1, user2]) => {
     let appBase, app
     
     // eslint-disable-next-line no-undef
@@ -106,6 +106,11 @@ contract('AssetShareApp', ([appManager, user1, user2]) => {
         
         // Assert that the owners have received the payout.
         // TODO - How to get Ether from address?
+    });
+    
+    it('Testing to see if we can call internal functions', async () => {
+        
+        await app.callAddOwner(ADDRESS_1, 0);
     });
     
     // it('should be incremented by any address', async () => {
