@@ -12,7 +12,7 @@ contract AssetShareApp is AragonApp {
     event COMPLETED_OFFER(uint id);
     event CANCELLED_OFFER(uint id);
 
-    struct Owner {               // used to store shareholder information
+    struct Owner {// used to store shareholder information
         uint shares;             // amount of shares owned by shareholder
         uint sharesOnSale;       // amount of the owner's shares currently on sale
         uint listPosition;       // position in the ownerList
@@ -23,7 +23,7 @@ contract AssetShareApp is AragonApp {
         BUY
     }
 
-    struct Offer {                // describes an offer for selling / buying / gifting shares
+    struct Offer {// describes an offer for selling / buying / gifting shares
         uint id;                  // offer id (index in the offerList.txt)
         OfferType offerType;      // the type of the offer (BUY or SELL)
         uint listPosition;        // position in the activeOffersList (MISSING if not active)
@@ -39,7 +39,7 @@ contract AssetShareApp is AragonApp {
     uint constant public MISSING = ~uint256(0);                  // max uint value, signals missing data
     uint constant public TOTAL_SHARES = 1000000;                 // total number of ownership shares
     uint constant public TREASURY_RATIO_DENOMINATOR = 1000000;   // the ratio of ether placed in the treasury
-                                                                 // = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
+    // = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
 
     uint constant private DEFAULT_TREASURY_RATIO = 100000;       // default value of treasuryRatio
     uint constant private DEFAULT_PAYOUT_PERIOD = 60;            // default value of payoutPeriod
@@ -51,17 +51,16 @@ contract AssetShareApp is AragonApp {
 
     uint private treasuryBalance;               // wei in the treasury
     uint private treasuryRatio;                 // the ratio of ether placed in the treasury
-                                                //     = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
+    //     = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
     uint private payoutPeriod;                  // time interval between shareholder payout (in seconds)
     uint private lastPayday;                    // unix timestamp of last theoretical* payout
-                                                //     *Time when the payout should have happened
+    //     *Time when the payout should have happened
 
     Offer[] private offerList;                  // list of all offers
     uint[] private activeOffersList;            // list of indexes of active offers
 
     function initialize() public onlyInit {
 
-        // TODO: pass this in as parameter
         address initialOwner = address(0xb4124cEB3451635DAcedd11767f004d8a28c6eE7);
 
         // contract creator starts as sole owner
@@ -159,13 +158,61 @@ contract AssetShareApp is AragonApp {
     }
 
 
-    function offerToBuy(uint sharesAmount, uint price, address receiver) external {
+    function offerToBuy(uint sharesAmount, uint price, address receiver) external payable {
         require(sharesAmount > 0, "0-shares auctions are not allowed.");
 
         offerList.push(Offer(offerList.length, OfferType.BUY, activeOffersList.length, msg.sender,
             receiver, sharesAmount, price, block.timestamp, 0, false));
+
+        uint position = offerList.length - 1;
         activeOffersList.push(offerList.length - 1);
 
+        for (uint i = 0; i < offerList.length; i++) {
+            if (offerList[i].offerType == OfferType.SELL) {
+                if (offerList[i].shares >= sharesAmount) {
+                    if (offerList[i].price <= price) {
+                        //seller is not the same as the one offering the buying
+                            //buy sell offer
+                            Offer storage offer = offerList[i];
+
+                            require(offer.listPosition != MISSING, "Offer is no longer active.");
+                            require(offer.buyer == address(0) || offer.buyer == msg.sender, "Caller is not the intended buyer.");
+                            //position of sell offer
+                            uint offerId = i;
+
+                            // transfer shares
+                            if (ownershipMap[msg.sender].shares == 0) {
+                                addOwner(msg.sender, sharesAmount);
+                            } else {
+                                ownershipMap[msg.sender].shares += sharesAmount;
+                            }
+                            ownershipMap[offer.seller].shares -= sharesAmount;
+                            if (ownershipMap[offer.seller].shares == 0) {
+                                removeOwner(offer.seller);
+                            }
+
+                            // complete offer
+                            offer.buyer = msg.sender;
+                            offer.completionDate = block.timestamp;
+
+                            //if all shares are bought, delete offer
+                            if (sharesAmount == offer.shares) {
+                                //remove sell offer
+                                deactivateOffer(offerId);
+                                // remove buy offer
+                                deactivateOffer(position);
+                            } else {
+                                //change sell offer
+                                offer.buyer = address(0);
+                                offer.shares = offer.shares - sharesAmount;
+                                offer.price = offer.price - msg.value;
+                            }
+//                            emit COMPLETED_OFFER(offerId);
+                        }
+                }
+
+            }
+        }
         emit NEW_OFFER(offerList.length - 1);
     }
 
@@ -175,12 +222,12 @@ contract AssetShareApp is AragonApp {
     // set the price to 0 for gift
     function offerToSell(uint sharesAmount, uint price, address receiver) external {
         require(sharesAmount > 0, "0-shares auctions are not allowed.");
-        require(sharesAmount  + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares,
+        require(sharesAmount + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares,
             "Caller does not own this many shares.");
 
         // create new active SELL offer
         offerList.push(Offer(offerList.length, OfferType.SELL, activeOffersList.length, msg.sender,
-                              receiver, sharesAmount, price, block.timestamp, 0, false));
+            receiver, sharesAmount, price, block.timestamp, 0, false));
         activeOffersList.push(offerList.length - 1);
 
         // adjust seller's amount of shares on sale
@@ -203,7 +250,7 @@ contract AssetShareApp is AragonApp {
 
         require(offer.buyer == address(0) || offer.buyer == msg.sender, "Caller is not the intended buyer.");
 
-//      require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
+        // require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
 
         // attempt to transfer funds to seller, revert if it fails
         require(offer.seller.send(msg.value), "Funds could not be forwarded. Transaction denied.");
@@ -223,7 +270,8 @@ contract AssetShareApp is AragonApp {
         offer.buyer = msg.sender;
         offer.completionDate = block.timestamp;
 
-        if (shares == offer.shares){
+        //if all shares are bought, delete offer
+        if (shares == offer.shares) {
             deactivateOffer(offerId);
         } else {
             offer.buyer = address(0);
@@ -268,26 +316,26 @@ contract AssetShareApp is AragonApp {
     }
 
     function getActiveOfferByIndex(uint idx) external view returns (uint id,
-                                                                    string offerType,
-                                                                    address seller,
-                                                                    address buyer,
-                                                                    uint shares,
-                                                                    uint price,
-                                                                    uint creationDate,
-                                                                    uint completionDate,
-                                                                    bool cancelled) {
+        string offerType,
+        address seller,
+        address buyer,
+        uint shares,
+        uint price,
+        uint creationDate,
+        uint completionDate,
+        bool cancelled) {
         return getOffer(activeOffersList[idx]);
     }
 
     function getOffer(uint offerId) public view returns (uint id,
-                                                         string offerType,
-                                                         address seller,
-                                                         address buyer,
-                                                         uint shares,
-                                                         uint price,
-                                                         uint creationDate,
-                                                         uint completionDate,
-                                                         bool cancelled) {
+        string offerType,
+        address seller,
+        address buyer,
+        uint shares,
+        uint price,
+        uint creationDate,
+        uint completionDate,
+        bool cancelled) {
         Offer storage offer = offerList[offerId];
         id = offer.id;
         offerType = (offer.offerType == OfferType.SELL ? "SELL" : "BUY");
