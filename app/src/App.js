@@ -30,7 +30,7 @@ function App() {
     const [message, setMessage] = useState('');
     const [shares, setShares] = useState(0);
     const [price, setPrice] = useState(0);
-    const [newShares,setNewShares] = useState(0);
+    const [newShares, setNewShares] = useState(0);
     const [newPrice, setNewPrice] = useState(0);
     const [intendedBuyer, setIntendedBuyer] = useState('');
     const anyAddress = '0x0000000000000000000000000000000000000000';
@@ -49,14 +49,14 @@ function App() {
         return (address == anyAddress ? '-' : <IdentityBadge entity={address}/>);
     }
 
-    function calculatePrice(price,shares) {
-        if(newShares == "NaN"){
+    function calculatePrice(price, shares) {
+        if (newShares == "NaN") {
             return 0
         }
-        if(newShares == 0){
+        if (newShares == 0) {
             return 0
         }
-        if (newShares == shares){
+        if (newShares == shares) {
             return price;
         } else {
             return (percentageToShares(newShares) / shares) * price;
@@ -162,14 +162,14 @@ function App() {
                     </Buttons>
                     <DataView
                         display="table"
-                        fields={['Id', 'Seller', 'Intended Buyer', 'Shares (%)', 'Price (wei)', 'Partial','Buy', 'Cancel']}
+                        fields={['Id', 'Seller', 'Intended Buyer', 'Shares (%)', 'Price (wei)', 'Partial', 'Buy', 'Cancel']}
                         entries={onlySpecificOffers("SELL")}
                         renderEntry={({id, seller, buyer, shares, price}) => {
                             return [id,
                                 displayAddress(seller),
                                 displayAddress(buyer),
                                 sharesToPercentage(shares),
-                                calculatePrice(price,shares),
+                                calculatePrice(price, shares),
                                 <TextInput.Number
                                     value={newShares}
                                     onChange={event => {
@@ -180,7 +180,7 @@ function App() {
                                     display="label"
                                     label="Buy"
                                     onClick={() => {
-                                        api.buyShares(id, percentageToShares(newShares), {'value': (calculatePrice(price,shares))}).toPromise()
+                                        api.buyShares(id, percentageToShares(newShares), {'value': (calculatePrice(price, shares))}).toPromise()
                                     }
                                     }
                                 />,
@@ -192,61 +192,69 @@ function App() {
                             ]
                         }}
                     />
-                </Box>
+
+                        Shares to buy (%): <TextInput.Number
+                        value={shares}
+                        onChange={event => setShares(parseInt(event.target.value), 10)}
+                    /> <br/>
+                        Price (wei): <TextInput.Number
+                        value={price}
+                        onChange={event => setPrice(parseInt(event.target.value), 10)}
+                    /> <br/>
+                        Intended buyer: <TextInput
+                        value={intendedBuyer}
+                        onChange={event => setIntendedBuyer(event.target.value)}
+                    /> <br/>
+                        <Buttons>
+                            <Button
+                                display="label"
+                                label="Publish Offer"
+                                onClick={() =>
+                                    api.offerToBuy(percentageToShares(shares), price, (intendedBuyer ? intendedBuyer : anyAddress), {'value': price}).toPromise()}
+                            />
+                            <Button
+                                display="label"
+                                label="Test"
+                                onClick={() =>
+                                    console.log(offers)}
+                            />
+                        </Buttons>
+                        <DataView
+                            display="table"
+                            fields={['Id', 'Buyer', 'Intended Seller', 'Shares (%)', 'Price (wei)', 'Partial shares', 'Sell', 'Cancel']}
+                            entries={onlySpecificOffers("BUY")}
+                            renderEntry={({id, seller, buyer, shares, price}) => {
+                                return [id,
+                                    displayAddress(seller),
+                                    displayAddress(buyer),
+                                    sharesToPercentage(shares),
+                                    price,
+                                    <TextInput.Number
+                                        value={newShares}
+                                        onChange={event => {
+                                            setNewShares(parseInt(event.target.value), 10)
+                                        }}
+                                    />,
+                                    <Button
+                                        display="label"
+                                        label="Sell"
+                                        onClick={() => api.offerToSell(percentageToShares(newShares), calculatePrice(price, shares), seller).toPromise()}
+                                    />,
+                                    <Button
+                                        display="label"
+                                        label="Cancel"
+                                        onClick={() => api.cancelOffer(id).toPromise()}
+                                    />
+                                ]
+                            }}
+                        />
+                    </Box>
+
             )
             break;
         case 3: //Buy Offers
             selectedView = (
                 <Box>
-                    Shares to buy (%): <TextInput.Number
-                    value={shares}
-                    onChange={event => setShares(parseInt(event.target.value), 10)}
-                /> <br/>
-                    Price (wei): <TextInput.Number
-                    value={price}
-                    onChange={event => setPrice(parseInt(event.target.value), 10)}
-                /> <br/>
-                    Intended buyer: <TextInput
-                    value={intendedBuyer}
-                    onChange={event => setIntendedBuyer(event.target.value)}
-                /> <br/>
-                    <Buttons>
-                        <Button
-                            display="label"
-                            label="Publish Offer"
-                            onClick={() =>
-                                api.offerToBuy(percentageToShares(shares), price, (intendedBuyer ? intendedBuyer : anyAddress)).toPromise()}
-                        />
-                    </Buttons>
-                    <DataView
-                        display="table"
-                        fields={['Id', 'Buyer', 'Intended Seller', 'Shares (%)', 'Price (wei)', 'Partial shares', 'Sell', 'Cancel']}
-                        entries={onlySpecificOffers("BUY")}
-                        renderEntry={({id, seller, buyer, shares, price}) => {
-                            return [id,
-                                displayAddress(seller),
-                                displayAddress(buyer),
-                                sharesToPercentage(shares),
-                                price,
-                                <TextInput.Number
-                                    value={newShares}
-                                    onChange={event => {
-                                        setNewShares(parseInt(event.target.value), 10)
-                                    }}
-                                />,
-                                <Button
-                                    display="label"
-                                    label="Sell"
-                                    onClick={() => api.offerToSell(percentageToShares(newShares), calculatePrice(price,shares), seller).toPromise()}
-                                />,
-                                <Button
-                                    display="label"
-                                    label="Cancel"
-                                    onClick={() => api.cancelOffer(id).toPromise()}
-                                />
-                            ]
-                        }}
-                    />
                 </Box>
             )
     }
@@ -258,7 +266,7 @@ function App() {
                 primary="AssetShare"
             />
             <Tabs
-                items={['Payments', 'Owners', 'Sell Offers', 'Buy Offers']}
+                items={['Payments', 'Owners', 'Sell Offers', 'Proposals']}
                 selected={selectedTab}
                 onChange={setSelectedTab}
             />
