@@ -158,59 +158,76 @@ contract AssetShareApp is AragonApp {
     }
 
 
-    function offerToBuy(uint sharesAmount, uint price, address receiver) external payable {
-        require(sharesAmount > 0, "0-shares auctions are not allowed.");
+    function offerToBuy(uint shares, uint price, address receiver) external payable {
+        require(shares > 0, "0-shares auctions are not allowed.");
 
         offerList.push(Offer(offerList.length, OfferType.BUY, activeOffersList.length, msg.sender,
-            receiver, sharesAmount, price, block.timestamp, 0, false));
+            receiver, shares, price, block.timestamp, 0, false));
 
-        uint position = offerList.length - 1;
+        uint buyOfferPosition = offerList.length - 1;
         activeOffersList.push(offerList.length - 1);
-
+        uint flag = 0;
         for (uint i = 0; i < offerList.length; i++) {
-            if (offerList[i].offerType == OfferType.SELL) {
-                if (offerList[i].shares >= sharesAmount) {
-                    if (offerList[i].price <= price) {
-                        //seller is not the same as the one offering the buying
-                            //buy sell offer
-                            Offer storage offer = offerList[i];
+            Offer storage sellOffer = offerList[i];
+            if (sellOffer.listPosition != MISSING) {
+                if (sellOffer.offerType == OfferType.SELL) {
+                    if (sellOffer.shares >= shares) {
+                        //TODO: get lowest price
+                        //TODO: pay price for the amount of shares bought
+                        if (flag == 0) {
 
-                            require(offer.listPosition != MISSING, "Offer is no longer active.");
-                            require(offer.buyer == address(0) || offer.buyer == msg.sender, "Caller is not the intended buyer.");
+                            flag = 1;
+
+                            //seller is not the same as the one offering the buying
+                            Offer storage buyOffer = offerList[buyOfferPosition];
+
+                            require(sellOffer.listPosition != MISSING, "Offer is no longer active.");
+                            require(sellOffer.buyer == address(0) || sellOffer.buyer == msg.sender, "Caller is not the intended buyer.");
                             //position of sell offer
-                            uint offerId = i;
+                            uint offerId = sellOffer.id;
+
+                            require(sellOffer.seller.send(msg.value), "Funds could not be forwarded. Transaction denied.");
+
 
                             // transfer shares
                             if (ownershipMap[msg.sender].shares == 0) {
-                                addOwner(msg.sender, sharesAmount);
+                                addOwner(msg.sender, shares);
                             } else {
-                                ownershipMap[msg.sender].shares += sharesAmount;
+                                ownershipMap[msg.sender].shares += shares;
                             }
-                            ownershipMap[offer.seller].shares -= sharesAmount;
-                            if (ownershipMap[offer.seller].shares == 0) {
-                                removeOwner(offer.seller);
+                            ownershipMap[sellOffer.seller].shares -= shares;
+                            if (ownershipMap[sellOffer.seller].shares == 0) {
+                                removeOwner(sellOffer.seller);
                             }
 
                             // complete offer
-                            offer.buyer = msg.sender;
-                            offer.completionDate = block.timestamp;
+                            sellOffer.buyer = msg.sender;
+                            sellOffer.completionDate = block.timestamp;
+
+                            //change buy offer
+                            if (shares == buyOffer.shares) {
+                                // remove buy offer
+                                //                        deactivateOffer(buyOfferPosition);
+                            } else {
+                                buyOffer.shares = buyOffer.shares - shares;
+                                buyOffer.price = buyOffer.price - msg.value;
+                            }
 
                             //if all shares are bought, delete offer
-                            if (sharesAmount == offer.shares) {
+                            if (shares == sellOffer.shares) {
                                 //remove sell offer
                                 deactivateOffer(offerId);
-                                // remove buy offer
-                                deactivateOffer(position);
                             } else {
                                 //change sell offer
-                                offer.buyer = address(0);
-                                offer.shares = offer.shares - sharesAmount;
-                                offer.price = offer.price - msg.value;
-                            }
-//                            emit COMPLETED_OFFER(offerId);
-                        }
-                }
+                                ownershipMap[sellOffer.seller].sharesOnSale -= shares;
+                                sellOffer.buyer = address(0);
+                                sellOffer.shares = sellOffer.shares - shares;
+                                sellOffer.price = sellOffer.price - msg.value;
 
+                            }
+                        }
+                    }
+                }
             }
         }
         emit NEW_OFFER(offerList.length - 1);
@@ -277,6 +294,7 @@ contract AssetShareApp is AragonApp {
             offer.buyer = address(0);
             offer.shares = offer.shares - shares;
             offer.price = offer.price - msg.value;
+            ownershipMap[offer.seller].sharesOnSale -= shares;
         }
         emit COMPLETED_OFFER(offerId);
     }
