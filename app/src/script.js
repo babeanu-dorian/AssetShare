@@ -34,7 +34,7 @@ async (state, {event}) => {
                     return {
                         ...nextState,
                         owners: await getOwners(),
-                        offers: await getActiveOffers()
+                        offers: await getActiveOffers(),
                     }
                 case events.SYNC_STATUS_SYNCING:
                     return {...nextState, isSyncing: true}
@@ -66,7 +66,7 @@ function initializeState() {
             treasuryBalance: await getTreasuryBalance(),
             funds: await getFunds(),
             owners: await getOwners(),
-            offers: await getActiveOffers()
+            offers: await getActiveOffers(),
         }
     }
 }
@@ -96,6 +96,7 @@ async function getOwners() {
     }
     return owners;
 }
+
 
 async function getActiveOffers() {
     let offersCount = parseInt(await app.call('getActiveOffersCount').toPromise(), 10);

@@ -1,24 +1,16 @@
 import React, {useState} from 'react'
 import {useAragonApi} from '@aragon/api-react'
 import {
-    AddressField,
     Box,
     Button,
     DataView,
-    GU,
     Header,
-    IconMinus,
-    IconPlus,
     IdentityBadge,
     Main,
     SyncIndicator,
     Tabs,
-    Text,
     TextInput,
     textStyle,
-    ContextMenu,
-    ContextMenuItem, DropDown, SidePanel
-
 } from '@aragon/ui'
 import styled from 'styled-components'
 
@@ -49,7 +41,7 @@ function App() {
         return (address == anyAddress ? '-' : <IdentityBadge entity={address}/>);
     }
 
-    function calculatePrice(price, shares) {
+    function calculatePartialPrice(price, shares) {
         if (newShares == "NaN") {
             return 0
         }
@@ -140,6 +132,14 @@ function App() {
         case 2: //Offers
             selectedView = (
                 <Box>
+                    <div
+                        css={`
+        ${textStyle('body1')};
+      `}
+                    >
+                        Sell Offers
+                    </div>
+
                     Shares to sell
                     (%): <TextInput.Number
                     value={shares}
@@ -169,7 +169,7 @@ function App() {
                                 displayAddress(seller),
                                 displayAddress(buyer),
                                 sharesToPercentage(shares),
-                                calculatePrice(price, shares),
+                                calculatePartialPrice(price, shares),
                                 <TextInput.Number
                                     value={newShares}
                                     onChange={event => {
@@ -180,7 +180,7 @@ function App() {
                                     display="label"
                                     label="Buy"
                                     onClick={() => {
-                                        api.buyShares(id, percentageToShares(newShares), {'value': (calculatePrice(price, shares))}).toPromise()
+                                        api.buyShares(id, percentageToShares(newShares), {'value': (calculatePartialPrice(price, shares))}).toPromise()
                                     }
                                     }
                                 />,
@@ -192,6 +192,15 @@ function App() {
                             ]
                         }}
                     />
+
+                    <div
+                        css={`
+        ${textStyle('body1')};
+      `}
+                    >
+                    Buy Offers
+                    </div>
+
 
                         Shares to buy (%): <TextInput.Number
                         value={shares}
@@ -238,7 +247,9 @@ function App() {
                                     <Button
                                         display="label"
                                         label="Sell"
-                                        onClick={() => api.offerToSell(percentageToShares(newShares), calculatePrice(price, shares), seller).toPromise()}
+                                        onClick={() => api.offerToSell(percentageToShares(newShares), calculatePartialPrice(price, shares), seller).toPromise()}
+
+                                        // onClick={() => api.buyShares(id, percentageToShares(newShares), {'value': (calculatePartialPrice(price, shares))}).toPromise()}
                                     />,
                                     <Button
                                         display="label"
@@ -266,7 +277,7 @@ function App() {
                 primary="AssetShare"
             />
             <Tabs
-                items={['Payments', 'Owners', 'Sell Offers', 'Proposals']}
+                items={['Payments', 'Owners', 'Offers', 'Proposals']}
                 selected={selectedTab}
                 onChange={setSelectedTab}
             />
