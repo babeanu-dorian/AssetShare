@@ -24,16 +24,17 @@ contract AssetShareApp is AragonApp {
     }
 
     struct Offer {// describes an offer for selling / buying / gifting shares
-        uint id;                  // offer id (index in the offerList.txt)
+        uint id;                  // offer id (index in the offerList)
         OfferType offerType;      // the type of the offer (BUY or SELL)
-        uint listPosition;        // position in the activeOffersList (MISSING if not active)
-        address seller;           // address of the one making the offer
-        address buyer;            // address of the intended recepient of the offer (empty for public auction)
-        uint shares;              // amount of offered shares
-        uint price;               // price of the shares in wei (set to 0 for gift)
+        uint listPosition;        // position in the activeBuyOffersList or activeSellOffersList (MISSING if not active)
+        address creator;          // address of the creator of the offer
+        uint shares;              // initial amount of offered shares
+        uint sharesRemaining;     // amount of offered shares remaining for sale/buy
+        uint price;               // price per share in wei (set to 0 for gift)
+        uint weiAmount;           // amount of wei remaining for buying offers or obtained for sell offers
         uint creationDate;        // unix timestamp of the date when the offer was published
         uint completionDate;      // unix timestamp of the date when the shares were transfered or the offer was cancelled
-        bool cancelled;           // whether or not the offer was cancelled
+        bool cancelled;           // whether or not the offer was cancelled (or collected, if the offer was completed)
     }
 
     uint constant public MISSING = ~uint256(0);                  // max uint value, signals missing data
@@ -57,7 +58,8 @@ contract AssetShareApp is AragonApp {
     //     *Time when the payout should have happened
 
     Offer[] private offerList;                  // list of all offers
-    uint[] private activeOffersList;            // list of indexes of active offers
+    uint[] private activeBuyOffersList;         // list of indexes of active buy offers, ordered from lowest to highest offer.
+    uint[] private activeSellOffersList;        // list of indexes of active sell offers, ordered from highest to lowest offer.
 
     function initialize() public onlyInit {
 
@@ -137,7 +139,7 @@ contract AssetShareApp is AragonApp {
         uint funds = getFunds();
         // send owners'offer gains
         for (uint i = 0; i != ownerList.length; ++i) {
-            ownerList[i].send((funds * ownershipMap[ownerList[i]].shares) / TOTAL_SHARES);
+            require(ownerList[i].send((funds * ownershipMap[ownerList[i]].shares) / TOTAL_SHARES), "Failed to divide and transfer funds.");
         }
     }
 
@@ -157,152 +159,316 @@ contract AssetShareApp is AragonApp {
         return address(this).balance - treasuryBalance;
     }
 
+    // Creates a buy offer for the given amount of shares for the given price.
+    // If the offer auto completes using existing sell offers, then it will already be deactivated and ready to be collected.
+    function offerToBuy(uint numShares, uint price) external payable {
+        require(numShares > 0, "0-shares auctions are not allowed.");
 
-    function offerToBuy(uint shares, uint price, address receiver) external payable {
-        require(shares > 0, "0-shares auctions are not allowed.");
+        // Require the caller to send exactly the funds required to buy all shares at the supplied (maximum) price.
+        uint maxPrice = numShares * price; // TODO - Protect against integer overflow in weiAmount.
+        require(msg.value >= maxPrice, "Insufficient funds.");
+        require(msg.value == maxPrice, "Mismatch between max price and paid amount."); // Disallow too large payments since we'd have to send them back.
 
-        offerList.push(Offer(offerList.length, OfferType.BUY, activeOffersList.length, msg.sender,
-            receiver, shares, price, block.timestamp, 0, false));
+        // Create the new buy offer and add it to the offers list.
+        Offer memory buyOffer = Offer(offerList.length, OfferType.BUY, MISSING,
+                msg.sender, numShares, numShares, price, maxPrice, block.timestamp, 0, false);
+        offerList.push(buyOffer);
 
-        uint buyOfferPosition = offerList.length - 1;
-        activeOffersList.push(offerList.length - 1);
-        uint flag = 0;
-        for (uint i = 0; i < offerList.length; i++) {
-            Offer storage sellOffer = offerList[i];
-            if (sellOffer.listPosition != MISSING) {
-                if (sellOffer.offerType == OfferType.SELL) {
-                    if (sellOffer.shares >= shares) {
-                        //TODO: get lowest price
-                        //TODO: pay price for the amount of shares bought
-                        if (flag == 0) {
+        // Attempt to autocomplete the offer.
+        for (uint i = activeSellOffersList.length - 1; i >= 0; i--) {
+            Offer storage sellOffer = offerList[activeSellOffersList[i]];
 
-                            flag = 1;
+            // Break if the price for this sell offer (and therefore all following sell offers) is higher than the offered price.
+            if (price < sellOffer.price) {
+                break;
+            }
 
-                            //seller is not the same as the one offering the buying
-                            Offer storage buyOffer = offerList[buyOfferPosition];
+            // Fully or partially complete this sell offer.
+            uint numTransShares;
+            uint weiAmount;
+            if (buyOffer.sharesRemaining >= sellOffer.sharesRemaining) { // Fully complete this sell offer.
 
-                            require(sellOffer.listPosition != MISSING, "Offer is no longer active.");
-                            require(sellOffer.buyer == address(0) || sellOffer.buyer == msg.sender, "Caller is not the intended buyer.");
-                            //position of sell offer
-                            uint offerId = sellOffer.id;
+                // Transfer the shares.
+                numTransShares = sellOffer.sharesRemaining;
+                sellOffer.sharesRemaining = 0;
+                buyOffer.sharesRemaining -= numTransShares;
+                ownershipMap[sellOffer.creator].sharesOnSale -= numTransShares;
+                transferShares(sellOffer.creator, buyOffer.creator, numTransShares);
 
-                            require(sellOffer.seller.send(msg.value), "Funds could not be forwarded. Transaction denied.");
+                // Update the transaction values.
+                weiAmount = numTransShares * sellOffer.price;
+                sellOffer.weiAmount += weiAmount;
+                buyOffer.weiAmount -= weiAmount;
 
+                // Set completion timestamp.
+                sellOffer.completionDate = block.timestamp;
 
-                            // transfer shares
-                            if (ownershipMap[msg.sender].shares == 0) {
-                                addOwner(msg.sender, shares);
-                            } else {
-                                ownershipMap[msg.sender].shares += shares;
-                            }
-                            ownershipMap[sellOffer.seller].shares -= shares;
-                            if (ownershipMap[sellOffer.seller].shares == 0) {
-                                removeOwner(sellOffer.seller);
-                            }
+                // Remove the completed sell offer.
+                removeActiveOffer(sellOffer);
 
-                            // complete offer
-                            sellOffer.buyer = msg.sender;
-                            sellOffer.completionDate = block.timestamp;
+                // TODO - Implement somewhere that the seller can now cancel their completed offer to obtain the wei from the contract, even if they are no longer an owner.
+                //        This should happen when the offer is cancelled (boolean cancelled), such that the payout can only happen once.
 
-                            //change buy offer
-                            if (shares == buyOffer.shares) {
-                                // remove buy offer
-                                //                        deactivateOffer(buyOfferPosition);
-                            } else {
-                                buyOffer.shares = buyOffer.shares - shares;
-                                buyOffer.price = buyOffer.price - msg.value;
-                            }
+            } else { // Partially complete this sell offer.
 
-                            //if all shares are bought, delete offer
-                            if (shares == sellOffer.shares) {
-                                //remove sell offer
-                                deactivateOffer(offerId);
-                            } else {
-                                //change sell offer
-                                ownershipMap[sellOffer.seller].sharesOnSale -= shares;
-                                sellOffer.buyer = address(0);
-                                sellOffer.shares = sellOffer.shares - shares;
-                                sellOffer.price = sellOffer.price - msg.value;
+                // Transfer the shares.
+                numTransShares = buyOffer.sharesRemaining;
+                sellOffer.sharesRemaining -= numTransShares;
+                buyOffer.sharesRemaining = 0;
+                ownershipMap[sellOffer.creator].sharesOnSale -= numTransShares;
+                transferShares(sellOffer.creator, buyOffer.creator, numTransShares);
 
-                            }
-                        }
-                    }
-                }
+                // Update the transaction values.
+                weiAmount = numTransShares * sellOffer.price;
+                sellOffer.weiAmount += weiAmount;
+                buyOffer.weiAmount -= weiAmount;
+
+                // Break since the buy offer has been fully completed.
+                break;
             }
         }
+
+        // Add the buy offer to the list of active offers if it hasn't been fully auto completed, keeping it ordered from lowest to highest buy offer.
+        if (buyOffer.sharesRemaining > 0) {
+            uint newOfferInd = activeBuyOffersList.length;
+            activeBuyOffersList.push(0); // Append placeholder.
+            for (uint j = activeBuyOffersList.length - 2; j >= 0; j--) {
+
+                // Break if the new offer should be inserted before the offer at index j.
+                if(price > offerList[activeBuyOffersList[j]].price) {
+                    break;
+                }
+
+                // Move the offer at index j if the new offer should be inserted before it.
+                activeBuyOffersList[j + 1] = activeBuyOffersList[j];
+                newOfferInd = j;
+            }
+            buyOffer.listPosition = newOfferInd;
+            activeBuyOffersList[newOfferInd] = buyOffer.id;
+        } else {
+
+            // The buy offer was auto completed, so mark it as such.
+            buyOffer.completionDate = block.timestamp;
+        }
+
+        // TODO - Move this to where the buy offer is 'cancelled' (collected).
+        // Require the caller to pay the required funds to the contract, for auto completed offers and potentially to reserve for automatically completing selling offers later.
+        // Return excessive payment to the caller.
+//        uint requiredPayment = buyOffer.sharesRemaining * buyOffer.price        // Payment required for remaining buy offer.
+//                + (buyOffer.shares * buyOffer.price) - buyOffer.priceRemaining; // Payment spent during auto completion.
+//        require(sender.value >= requiredPayment, "Insufficient funds.");
+//        if(sender.value > requiredPayment) {
+//            require(msg.sender.send(sender.value - requiredPayment));
+//        }
+
+        // Emit a new offer event.
         emit NEW_OFFER(offerList.length - 1);
     }
 
+    // Creates a sell offer for the given amount of shares for the given price.
+    // If the offer auto completes using existing buy offers, then it will already be deactivated and ready to be collected.
+    function offerToSell(uint numShares, uint price) external payable {
+        require(numShares > 0, "0-shares auctions are not allowed.");
 
-    // publishes a new SELL offer (transfer of shares from an owner to a buyer for a price)
-    // use 0 for the receiver address to let anyone purchase the shares
-    // set the price to 0 for gift
-    function offerToSell(uint sharesAmount, uint price, address receiver) external {
-        require(sharesAmount > 0, "0-shares auctions are not allowed.");
-        require(sharesAmount + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares,
+        // Require the caller to have enough shares to put up for sale.
+        require(ownershipMap[msg.sender].shares - ownershipMap[msg.sender].sharesOnSale > numShares,
             "Caller does not own this many shares.");
 
-        // create new active SELL offer
-        offerList.push(Offer(offerList.length, OfferType.SELL, activeOffersList.length, msg.sender,
-            receiver, sharesAmount, price, block.timestamp, 0, false));
-        activeOffersList.push(offerList.length - 1);
+        // Adjust seller's amount of shares on sale.
+        ownershipMap[msg.sender].sharesOnSale += numShares;
 
-        // adjust seller's amount of shares on sale
-        ownershipMap[msg.sender].sharesOnSale += sharesAmount;
+        // Create the new sell offer and add it to the offers list.
+        Offer memory sellOffer = Offer(offerList.length, OfferType.SELL, MISSING,
+                msg.sender, numShares, numShares, price, 0, block.timestamp, 0, false);
+        offerList.push(sellOffer);
 
+        // Attempt to autocomplete the offer.
+        for (uint i = activeBuyOffersList.length - 1; i >= 0; i--) {
+            Offer storage buyOffer = offerList[activeBuyOffersList[i]];
+
+            // Break if the price for this buy offer (and therefore all following sell offers) is lower than the asked price.
+            if (price > buyOffer.price) {
+                break;
+            }
+
+            // Fully or partially complete this buy offer.
+            uint numTransShares;
+            uint weiAmount;
+            if (sellOffer.sharesRemaining >= buyOffer.sharesRemaining) { // Fully complete this buy offer.
+
+                // Transfer the shares.
+                numTransShares = buyOffer.sharesRemaining;
+                buyOffer.sharesRemaining = 0;
+                sellOffer.sharesRemaining -= numTransShares;
+                ownershipMap[sellOffer.creator].sharesOnSale -= numTransShares;
+                transferShares(sellOffer.creator, buyOffer.creator, numTransShares);
+
+                // Update the transaction values.
+                weiAmount = numTransShares * buyOffer.price;
+                sellOffer.weiAmount += weiAmount;
+                buyOffer.weiAmount -= weiAmount;
+
+                // Set completion timestamp.
+                buyOffer.completionDate = block.timestamp;
+
+                // Remove the completed buy offer.
+                removeActiveOffer(buyOffer);
+
+                // TODO - Implement somewhere that the buyer can now cancel their completed offer to obtain the shares from the contract, even if they are not yet an owner.
+                //        This should happen when the offer is cancelled (boolean cancelled), such that the shares payout can only happen once.
+
+            } else { // Partially complete this buy offer.
+
+                // Transfer the shares.
+                numTransShares = sellOffer.sharesRemaining;
+                buyOffer.sharesRemaining -= numTransShares;
+                sellOffer.sharesRemaining = 0;
+                ownershipMap[sellOffer.creator].sharesOnSale -= numTransShares;
+                transferShares(sellOffer.creator, buyOffer.creator, numTransShares);
+
+                // Update the transaction values.
+                weiAmount = numTransShares * buyOffer.price;
+                sellOffer.weiAmount += weiAmount;
+                buyOffer.weiAmount -= weiAmount;
+
+                // Break since the sell offer has been fully completed.
+                break;
+            }
+        }
+
+        // Add the sell offer to the list of active offers if it hasn't been fully auto completed, keeping it ordered from highest to lowest sell offer.
+        if (sellOffer.sharesRemaining > 0) {
+            uint newOfferInd = activeSellOffersList.length;
+            activeSellOffersList.push(0); // Append placeholder.
+            for (uint j = activeSellOffersList.length - 2; j >= 0; j--) {
+
+                // Break if the new offer should be inserted before the offer at index j.
+                if(price < offerList[activeSellOffersList[j]].price) {
+                    break;
+                }
+
+                // Move the offer at index j if the new offer should be inserted before it.
+                activeSellOffersList[j + 1] = activeSellOffersList[j];
+                newOfferInd = j;
+            }
+            sellOffer.listPosition = newOfferInd;
+            activeSellOffersList[newOfferInd] = sellOffer.id;
+        } else {
+
+            // The sell offer was auto completed, so mark it as such.
+            sellOffer.completionDate = block.timestamp;
+        }
+
+        // Emit a new offer event.
         emit NEW_OFFER(offerList.length - 1);
     }
 
-    // allows the caller to complete a SELL offer and performs the exchange of shares and ether
-    // if any of the requirements fail, the transaction (including the transferred money) is reverted
-    function buyShares(uint offerId, uint shares) external payable {
+    // Transfers shares from 'fromAddr' to 'toAddr'. Adds 'toAddr' as an owner if they had 0 shares, removes 'fromAddr' as an owner if they now have 0 shares.
+    // This function does not validate whether the numbers of shares can actually be transferred or whether 'fromAddr' actually is an owner, so use with caution.
+    function transferShares(address fromAddr, address toAddr, uint numShares) private {
+        if (ownershipMap[toAddr].shares == 0) {
+            addOwner(toAddr, numShares);
+        } else {
+            ownershipMap[toAddr].shares += numShares;
+        }
+        ownershipMap[fromAddr].shares -= numShares;
+        if (ownershipMap[fromAddr].shares == 0) {
+            removeOwner(fromAddr);
+        }
+    }
+
+    // TODO - Remove if no longer needed, or update when we do want specific-offer-completion support.
+//    // allows the caller to complete a SELL offer and performs the exchange of shares and ether
+//    // if any of the requirements fail, the transaction (including the transferred money) is reverted
+//    function buyShares(uint offerId, uint shares) external payable {
+//        require(offerId < offerList.length, "Invalid offer id.");
+//        Offer storage offer = offerList[offerId];
+//
+//        require(shares > 0, "No shares");
+//        require(shares <= offer.shares, "more than offered shares");
+//
+//        require(offer.offerType == OfferType.SELL, "Offer is not a sale.");
+//        require(offer.listPosition != MISSING, "Offer is no longer active.");
+//
+//        require(offer.buyer == address(0) || offer.buyer == msg.sender, "Caller is not the intended buyer.");
+//
+//        // require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
+//
+//        // attempt to transfer funds to seller, revert if it fails
+//        require(offer.creator.send(msg.value), "Funds could not be forwarded. Transaction denied.");
+//
+//        // transfer shares
+//        if (ownershipMap[msg.sender].shares == 0) {
+//            addOwner(msg.sender, shares);
+//        } else {
+//            ownershipMap[msg.sender].shares += shares;
+//        }
+//        ownershipMap[offer.creator].shares -= shares;
+//        if (ownershipMap[offer.creator].shares == 0) {
+//            removeOwner(offer.creator);
+//        }
+//
+//        // complete offer
+//        offer.buyer = msg.sender;
+//        offer.completionDate = block.timestamp;
+//
+//        //if all shares are bought, delete offer
+//        if (shares == offer.shares) {
+//            deactivateOffer(offerId);
+//        } else {
+//            offer.buyer = address(0);
+//            offer.shares = offer.shares - shares;
+//            offer.price = offer.price - msg.value;
+//            ownershipMap[offer.creator].sharesOnSale -= shares;
+//        }
+//        emit COMPLETED_OFFER(offerId);
+//    }
+
+    // Deactivates the offer if it was active and pays out the wei that is stored in this offer.
+    // Can only be called by the creator of this offer.
+    // TODO - Move shares transfer to this function, rather than sending them to a user directly on buy? Offers do hold money now, but shares are immediately transferred.
+    function collectOffer(uint offerId) external {
         require(offerId < offerList.length, "Invalid offer id.");
         Offer storage offer = offerList[offerId];
+        require(msg.sender == offer.creator, "Caller is not the creator of this offer.");
+        require(!offer.cancelled, "Offer is already collected.");
 
-        require(shares > 0, "No shares");
-        require(shares <= offer.shares, "more than offered shares");
+        // Mark the offer as collected.
+        offer.cancelled = true;
 
-        require(offer.offerType == OfferType.SELL, "Offer is not a sale.");
-        require(offer.listPosition != MISSING, "Offer is no longer active.");
-
-        require(offer.buyer == address(0) || offer.buyer == msg.sender, "Caller is not the intended buyer.");
-
-        // require(msg.value == offer.price, "Caller did not transfer the exact payment amount.");
-
-        // attempt to transfer funds to seller, revert if it fails
-        require(offer.seller.send(msg.value), "Funds could not be forwarded. Transaction denied.");
-
-        // transfer shares
-        if (ownershipMap[msg.sender].shares == 0) {
-            addOwner(msg.sender, shares);
-        } else {
-            ownershipMap[msg.sender].shares += shares;
-        }
-        ownershipMap[offer.seller].shares -= shares;
-        if (ownershipMap[offer.seller].shares == 0) {
-            removeOwner(offer.seller);
+        // Send the remaining or obtained wei to the offer creator.
+        if (offer.weiAmount > 0) {
+            require(offer.creator.send(offer.weiAmount), "Failed to pay out money from an offer.");
         }
 
-        // complete offer
-        offer.buyer = msg.sender;
-        offer.completionDate = block.timestamp;
+        // Get the correct active offers list.
+        uint[] activeOffersList;
+        if (offer.offerType == OfferType.SELL) {
+            activeOffersList = activeSellOffersList;
 
-        //if all shares are bought, delete offer
-        if (shares == offer.shares) {
-            deactivateOffer(offerId);
-        } else {
-            offer.buyer = address(0);
-            offer.shares = offer.shares - shares;
-            offer.price = offer.price - msg.value;
-            ownershipMap[offer.seller].sharesOnSale -= shares;
+            // Mark the remaining shares for a sell offer as freed.
+            ownershipMap[offer.creator].sharesOnSale -= offer.sharesRemaining;
+        } else { // if (offer.offerType == OfferType.BUY)
+            activeOffersList = activeBuyOffersList;
         }
-        emit COMPLETED_OFFER(offerId);
+
+        // Remove the offer from the active offer list if it was in it.
+        if (offer.listPosition != MISSING) {
+            uint pos = offer.listPosition;
+            offer.listPosition = MISSING;
+            activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
+            offerList[activeOffersList[pos]].listPosition = pos;
+            --activeOffersList.length;
+        }
+
+        // Emit an offer collected event.
+        emit CANCELLED_OFFER(offerId);
     }
 
     // deactivates an active auction owned by the caller
     function cancelOffer(uint offerId) external {
         require(offerId < offerList.length, "Invalid offer id.");
-        require(msg.sender == offerList[offerId].seller, "Caller does not own this offer.");
+        require(msg.sender == offerList[offerId].creator, "Caller does not own this offer.");
         require(offerList[offerId].listPosition != MISSING, "Offer is already inactive.");
 
         offerList[offerId].cancelled = true;
@@ -310,57 +476,102 @@ contract AssetShareApp is AragonApp {
         emit CANCELLED_OFFER(offerId);
     }
 
+    // Removes an active offer from the active offers list.
+    function removeActiveOffer(Offer offer) private {
+        uint[] activeOffersList;
+        if (offer.offerType == OfferType.SELL) {
+            activeOffersList = activeSellOffersList;
+        } else { // if (offer.offerType == OfferType.BUY)
+            activeOffersList = activeBuyOffersList;
+        }
+        uint offerIndex = offer.listPosition;
+        offer.listPosition = MISSING;
+        activeOffersList[offerIndex] = activeOffersList[activeOffersList.length - 1];
+        offerList[activeOffersList[offerIndex]].listPosition = offerIndex;
+        --activeOffersList.length;
+    }
+
     // removes an auction from the list of active auctions
     function deactivateOffer(uint offerId) private {
         Offer storage offer = offerList[offerId];
 
+        uint[] activeOffersList;
         if (offer.offerType == OfferType.SELL) {
-            ownershipMap[offer.seller].sharesOnSale -= offer.shares;
+            ownershipMap[offer.creator].sharesOnSale -= offer.shares;
+            activeOffersList = activeSellOffersList;
+        } else { // if (offer.offerType == OfferType.BUY)
+            activeOffersList = activeBuyOffersList;
         }
 
-        uint pos = offer.listPosition;
-        offer.listPosition = MISSING;
-        activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
-        offerList[activeOffersList[pos]].listPosition = pos;
-        --activeOffersList.length;
+        if (offer.listPosition != MISSING) {
+            uint pos = offer.listPosition;
+            offer.listPosition = MISSING;
+            activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
+            offerList[activeOffersList[pos]].listPosition = pos;
+            --activeOffersList.length;
+        }
     }
 
-    function getActiveOffersCount() external view returns (uint) {
-        return activeOffersList.length;
+    function getActiveBuyOffersCount() external view returns (uint) {
+        return activeBuyOffersList.length;
+    }
+
+    function getActiveSellOffersCount() external view returns (uint) {
+        return activeSellOffersList.length;
     }
 
     function getOffersCount() external view returns (uint) {
         return offerList.length;
     }
 
-    function getActiveOfferByIndex(uint idx) external view returns (uint id,
-        string offerType,
-        address seller,
-        address buyer,
-        uint shares,
-        uint price,
-        uint creationDate,
-        uint completionDate,
-        bool cancelled) {
-        return getOffer(activeOffersList[idx]);
+    // TODO - Update these getters with the new Offer fields (all getters below).
+    function getActiveSellOfferByIndex(uint idx) external view returns (
+            uint id,
+            string offerType,
+            address creator,
+            uint shares,
+            uint sharesRemaining,
+            uint price,
+            uint weiAmount,
+            uint creationDate,
+            uint completionDate,
+            bool cancelled) {
+        return getOffer(activeSellOffersList[idx]);
     }
 
-    function getOffer(uint offerId) public view returns (uint id,
-        string offerType,
-        address seller,
-        address buyer,
-        uint shares,
-        uint price,
-        uint creationDate,
-        uint completionDate,
-        bool cancelled) {
+    function getActiveBuyOfferByIndex(uint idx) external view returns (
+            uint id,
+            string offerType,
+            address creator,
+            uint shares,
+            uint sharesRemaining,
+            uint price,
+            uint weiAmount,
+            uint creationDate,
+            uint completionDate,
+            bool cancelled) {
+        return getOffer(activeBuyOffersList[idx]);
+    }
+
+    function getOffer(uint offerId) public view returns (
+            uint id,
+            string offerType,
+            address creator,
+            uint shares,
+            uint sharesRemaining,
+            uint price,
+            uint weiAmount,
+            uint creationDate,
+            uint completionDate,
+            bool cancelled) {
         Offer storage offer = offerList[offerId];
         id = offer.id;
         offerType = (offer.offerType == OfferType.SELL ? "SELL" : "BUY");
-        seller = offer.seller;
-        buyer = offer.buyer;
+        creator = offer.creator;
         shares = offer.shares;
+        sharesRemaining = offer.sharesRemaining;
         price = offer.price;
+        weiAmount = offer.weiAmount;
         creationDate = offer.creationDate;
         completionDate = offer.completionDate;
         cancelled = offer.cancelled;
