@@ -176,8 +176,9 @@ contract AssetShareApp is AragonApp {
         Offer storage buyOffer = offerList[offerList.length - 1];
 
         // Attempt to autocomplete the offer.
-        for (uint i = 1; i <= activeSellOffersList.length; i++) {
-            Offer storage sellOffer = offerList[activeSellOffersList[activeSellOffersList.length - i]];
+        uint activeSellOffersListLength = activeSellOffersList.length; // Length can vary when offers are removed in the loop.
+        for (uint i = 1; i <= activeSellOffersListLength; i++) {
+            Offer storage sellOffer = offerList[activeSellOffersList[activeSellOffersListLength - i]];
 
             // Break if the price for this sell offer (and therefore all following sell offers) is higher than the offered price.
             if (price < sellOffer.price) {
@@ -239,13 +240,15 @@ contract AssetShareApp is AragonApp {
             activeBuyOffersList.push(0); // Append placeholder.
             for (uint j = 2; j <= activeBuyOffersList.length; j++) {
                 uint ind = activeBuyOffersList.length - j;
+                Offer storage offer = offerList[activeBuyOffersList[ind]];
 
                 // Break if the new offer should be inserted before the offer at index ind.
-                if(price > offerList[activeBuyOffersList[ind]].price) {
+                if(price > offer.price) {
                     break;
                 }
 
                 // Move the offer at index ind if the new offer should be inserted before it.
+                offer.listPosition++;
                 activeBuyOffersList[ind + 1] = activeBuyOffersList[ind];
                 newOfferInd = ind;
             }
@@ -290,8 +293,9 @@ contract AssetShareApp is AragonApp {
         Offer storage sellOffer = offerList[offerList.length - 1];
 
         // Attempt to autocomplete the offer.
-        for (uint i = 1; i <= activeBuyOffersList.length; i++) {
-            Offer storage buyOffer = offerList[activeBuyOffersList[activeBuyOffersList.length - i]];
+        uint activeBuyOffersListLength = activeBuyOffersList.length; // Length can vary when offers are removed in the loop.
+        for (uint i = 1; i <= activeBuyOffersListLength; i++) {
+            Offer storage buyOffer = offerList[activeBuyOffersList[activeBuyOffersListLength - i]];
 
             // Break if the price for this buy offer (and therefore all following sell offers) is lower than the asked price.
             if (price > buyOffer.price) {
@@ -353,13 +357,15 @@ contract AssetShareApp is AragonApp {
             activeSellOffersList.push(0); // Append placeholder.
             for (uint j = 2; j <= activeSellOffersList.length; j++) {
                 uint ind = activeSellOffersList.length - j;
+                Offer storage offer = offerList[activeSellOffersList[ind]];
 
                 // Break if the new offer should be inserted before the offer at index ind.
-                if(price < offerList[activeSellOffersList[ind]].price) {
+                if(price < offer.price) {
                     break;
                 }
 
                 // Move the offer at index ind if the new offer should be inserted before it.
+                offer.listPosition++;
                 activeSellOffersList[ind + 1] = activeSellOffersList[ind];
                 newOfferInd = ind;
             }
@@ -468,6 +474,7 @@ contract AssetShareApp is AragonApp {
         if (offer.listPosition != MISSING) {
             for (uint i = offer.listPosition; i + 1 < activeOffersList.length; i++) {
                 activeOffersList[i] = activeOffersList[i + 1];
+                offerList[activeOffersList[i]].listPosition--;
             }
             --activeOffersList.length;
             offer.listPosition = MISSING;
@@ -496,11 +503,12 @@ contract AssetShareApp is AragonApp {
         } else { // if (offer.offerType == OfferType.BUY)
             activeOffersList = activeBuyOffersList;
         }
-        uint offerIndex = offer.listPosition;
-        offer.listPosition = MISSING;
-        activeOffersList[offerIndex] = activeOffersList[activeOffersList.length - 1];
-        offerList[activeOffersList[offerIndex]].listPosition = offerIndex;
+        for (uint i = offer.listPosition; i + 1 < activeOffersList.length; i++) {
+            activeOffersList[i] = activeOffersList[i + 1];
+            offerList[activeOffersList[i]].listPosition--;
+        }
         --activeOffersList.length;
+        offer.listPosition = MISSING;
     }
 
     // removes an auction from the list of active auctions
@@ -541,7 +549,6 @@ contract AssetShareApp is AragonApp {
         return offerList.length - 1;
     }
 
-    // TODO - Update these getters with the new Offer fields (all getters below).
     function getActiveSellOfferByIndex(uint idx) external view returns (
             uint id,
             string offerType,
