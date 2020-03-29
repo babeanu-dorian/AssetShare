@@ -63,7 +63,7 @@ contract AssetShareApp is AragonApp {
 
     function initialize() public onlyInit {
 
-        address initialOwner = address(0xb4124cEB3451635DAcedd11767f004d8a28c6eE7);
+        address initialOwner = msg.sender;
 
         // contract creator starts as sole owner
         addOwner(initialOwner, TOTAL_SHARES);

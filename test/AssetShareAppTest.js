@@ -18,7 +18,7 @@ const getLog = (receipt, logName, argName) => {
 
 const deployedContract = receipt => getLog(receipt, 'NewAppProxy', 'proxy')
 
-contract('AssetShareAppHelper', ([appManager, user1, user2]) => {
+contract('AssetShareAppHelper', ([contractCreator, appManager, user1, user2]) => {
     let appBase, app
     
     // eslint-disable-next-line no-undef
@@ -56,7 +56,7 @@ contract('AssetShareAppHelper', ([appManager, user1, user2]) => {
             // { from: appManager }
         // )
 
-        await app.initialize()
+        await app.initialize({from: contractCreator});
     })
     
     it('Initialize with single owner having all shares', async () => {
