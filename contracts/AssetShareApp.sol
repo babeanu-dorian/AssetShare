@@ -86,7 +86,7 @@ contract AssetShareApp is AragonApp {
         return ownershipMap[msg.sender].shares;
     }
 
-    function getSharesOnSale(address owner) external view returns (uint) {
+    function getSharesOnSaleByAddress(address owner) external view returns (uint) {
         return ownershipMap[owner].sharesOnSale;
     }
 
@@ -161,6 +161,7 @@ contract AssetShareApp is AragonApp {
 
     // Creates a buy offer for the given amount of shares for the given price.
     // If the offer auto completes using existing sell offers, then it will already be deactivated and ready to be collected.
+    // The new offer is appended at the end of the offerList.
     function offerToBuy(uint numShares, uint price) external payable {
         require(numShares > 0, "0-shares auctions are not allowed.");
 
@@ -170,13 +171,13 @@ contract AssetShareApp is AragonApp {
         require(msg.value == maxPrice, "Mismatch between max price and paid amount."); // Disallow too large payments since we'd have to send them back.
 
         // Create the new buy offer and add it to the offers list.
-        Offer memory buyOffer = Offer(offerList.length, OfferType.BUY, MISSING,
-                msg.sender, numShares, numShares, price, maxPrice, block.timestamp, 0, false);
-        offerList.push(buyOffer);
+        offerList.push(Offer(offerList.length, OfferType.BUY, MISSING,
+                msg.sender, numShares, numShares, price, maxPrice, block.timestamp, 0, false));
+        Offer storage buyOffer = offerList[offerList.length - 1];
 
         // Attempt to autocomplete the offer.
-        for (uint i = activeSellOffersList.length - 1; i >= 0; i--) {
-            Offer storage sellOffer = offerList[activeSellOffersList[i]];
+        for (uint i = 1; i <= activeSellOffersList.length; i++) {
+            Offer storage sellOffer = offerList[activeSellOffersList[activeSellOffersList.length - i]];
 
             // Break if the price for this sell offer (and therefore all following sell offers) is higher than the offered price.
             if (price < sellOffer.price) {
@@ -209,6 +210,10 @@ contract AssetShareApp is AragonApp {
                 // TODO - Implement somewhere that the seller can now cancel their completed offer to obtain the wei from the contract, even if they are no longer an owner.
                 //        This should happen when the offer is cancelled (boolean cancelled), such that the payout can only happen once.
 
+                // Break if this has fully completed the buy offer.
+                if (buyOffer.sharesRemaining == 0) {
+                    break;
+                }
             } else { // Partially complete this sell offer.
 
                 // Transfer the shares.
@@ -232,16 +237,17 @@ contract AssetShareApp is AragonApp {
         if (buyOffer.sharesRemaining > 0) {
             uint newOfferInd = activeBuyOffersList.length;
             activeBuyOffersList.push(0); // Append placeholder.
-            for (uint j = activeBuyOffersList.length - 2; j >= 0; j--) {
+            for (uint j = 2; j <= activeBuyOffersList.length; j++) {
+                uint ind = activeBuyOffersList.length - j;
 
-                // Break if the new offer should be inserted before the offer at index j.
-                if(price > offerList[activeBuyOffersList[j]].price) {
+                // Break if the new offer should be inserted before the offer at index ind.
+                if(price > offerList[activeBuyOffersList[ind]].price) {
                     break;
                 }
 
-                // Move the offer at index j if the new offer should be inserted before it.
-                activeBuyOffersList[j + 1] = activeBuyOffersList[j];
-                newOfferInd = j;
+                // Move the offer at index ind if the new offer should be inserted before it.
+                activeBuyOffersList[ind + 1] = activeBuyOffersList[ind];
+                newOfferInd = ind;
             }
             buyOffer.listPosition = newOfferInd;
             activeBuyOffersList[newOfferInd] = buyOffer.id;
@@ -262,12 +268,13 @@ contract AssetShareApp is AragonApp {
 //        }
 
         // Emit a new offer event.
-        emit NEW_OFFER(offerList.length - 1);
+        emit NEW_OFFER(buyOffer.id);
     }
 
     // Creates a sell offer for the given amount of shares for the given price.
     // If the offer auto completes using existing buy offers, then it will already be deactivated and ready to be collected.
-    function offerToSell(uint numShares, uint price) external payable {
+    // The new offer is appended at the end of the offerList.
+    function offerToSell(uint numShares, uint price) external {
         require(numShares > 0, "0-shares auctions are not allowed.");
 
         // Require the caller to have enough shares to put up for sale.
@@ -278,13 +285,13 @@ contract AssetShareApp is AragonApp {
         ownershipMap[msg.sender].sharesOnSale += numShares;
 
         // Create the new sell offer and add it to the offers list.
-        Offer memory sellOffer = Offer(offerList.length, OfferType.SELL, MISSING,
-                msg.sender, numShares, numShares, price, 0, block.timestamp, 0, false);
-        offerList.push(sellOffer);
+        offerList.push(Offer(offerList.length, OfferType.SELL, MISSING,
+                msg.sender, numShares, numShares, price, 0, block.timestamp, 0, false));
+        Offer storage sellOffer = offerList[offerList.length - 1];
 
         // Attempt to autocomplete the offer.
-        for (uint i = activeBuyOffersList.length - 1; i >= 0; i--) {
-            Offer storage buyOffer = offerList[activeBuyOffersList[i]];
+        for (uint i = 1; i <= activeBuyOffersList.length; i++) {
+            Offer storage buyOffer = offerList[activeBuyOffersList[activeBuyOffersList.length - i]];
 
             // Break if the price for this buy offer (and therefore all following sell offers) is lower than the asked price.
             if (price > buyOffer.price) {
@@ -317,6 +324,10 @@ contract AssetShareApp is AragonApp {
                 // TODO - Implement somewhere that the buyer can now cancel their completed offer to obtain the shares from the contract, even if they are not yet an owner.
                 //        This should happen when the offer is cancelled (boolean cancelled), such that the shares payout can only happen once.
 
+                // Break if this has fully completed the sell offer.
+                if (sellOffer.sharesRemaining == 0) {
+                    break;
+                }
             } else { // Partially complete this buy offer.
 
                 // Transfer the shares.
@@ -340,16 +351,17 @@ contract AssetShareApp is AragonApp {
         if (sellOffer.sharesRemaining > 0) {
             uint newOfferInd = activeSellOffersList.length;
             activeSellOffersList.push(0); // Append placeholder.
-            for (uint j = activeSellOffersList.length - 2; j >= 0; j--) {
+            for (uint j = 2; j <= activeSellOffersList.length; j++) {
+                uint ind = activeSellOffersList.length - j;
 
-                // Break if the new offer should be inserted before the offer at index j.
-                if(price < offerList[activeSellOffersList[j]].price) {
+                // Break if the new offer should be inserted before the offer at index ind.
+                if(price < offerList[activeSellOffersList[ind]].price) {
                     break;
                 }
 
-                // Move the offer at index j if the new offer should be inserted before it.
-                activeSellOffersList[j + 1] = activeSellOffersList[j];
-                newOfferInd = j;
+                // Move the offer at index ind if the new offer should be inserted before it.
+                activeSellOffersList[ind + 1] = activeSellOffersList[ind];
+                newOfferInd = ind;
             }
             sellOffer.listPosition = newOfferInd;
             activeSellOffersList[newOfferInd] = sellOffer.id;
@@ -360,7 +372,7 @@ contract AssetShareApp is AragonApp {
         }
 
         // Emit a new offer event.
-        emit NEW_OFFER(offerList.length - 1);
+        emit NEW_OFFER(sellOffer.id);
     }
 
     // Transfers shares from 'fromAddr' to 'toAddr'. Adds 'toAddr' as an owner if they had 0 shares, removes 'fromAddr' as an owner if they now have 0 shares.
@@ -454,11 +466,11 @@ contract AssetShareApp is AragonApp {
 
         // Remove the offer from the active offer list if it was in it.
         if (offer.listPosition != MISSING) {
-            uint pos = offer.listPosition;
-            offer.listPosition = MISSING;
-            activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
-            offerList[activeOffersList[pos]].listPosition = pos;
+            for (uint i = offer.listPosition; i + 1 < activeOffersList.length; i++) {
+                activeOffersList[i] = activeOffersList[i + 1];
+            }
             --activeOffersList.length;
+            offer.listPosition = MISSING;
         }
 
         // Emit an offer collected event.
@@ -522,6 +534,11 @@ contract AssetShareApp is AragonApp {
 
     function getOffersCount() external view returns (uint) {
         return offerList.length;
+    }
+
+    // Gets the id of the last added offer.
+    function getLatestOfferId() external view returns (uint) {
+        return offerList.length - 1;
     }
 
     // TODO - Update these getters with the new Offer fields (all getters below).
