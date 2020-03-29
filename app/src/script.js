@@ -30,11 +30,13 @@ async (state, {event}) => {
                 case 'NEW_OFFER':
                 case 'COMPLETED_OFFER':
                 case 'CANCELLED_OFFER':
-                    await getActiveOffers();
+                    await getBuyActiveOffers();
+                    await getSellActiveOffers();
                     return {
                         ...nextState,
                         owners: await getOwners(),
-                        offers: await getActiveOffers(),
+                        sell_offers: await getSellActiveOffers(),
+                        buy_offers: await getBuyActiveOffers()
                     }
                 case events.SYNC_STATUS_SYNCING:
                     return {...nextState, isSyncing: true}
@@ -66,9 +68,15 @@ function initializeState() {
             treasuryBalance: await getTreasuryBalance(),
             funds: await getFunds(),
             owners: await getOwners(),
-            offers: await getActiveOffers(),
+            sell_offers: await getSellActiveOffers(),
+            buy_offers: await getBuyActiveOffers(),
+            flag: await getFlag()
         }
     }
+}
+
+async function getFlag() {
+    return parseInt(await app.call('flag').toPromise(), 10);
 }
 
 async function getTotalShares() {
@@ -91,18 +99,27 @@ async function getOwners() {
         owners.push({
             'address': address,
             'shares': parseInt(await app.call('getSharesByAddress', address).toPromise(), 10),
-            'sharesOnSale': parseInt(await app.call('getSharesOnSale', address).toPromise(), 10)
+            'sharesOnSale': parseInt(await app.call('getSharesOnSaleByAddress', address).toPromise(), 10)
         });
     }
     return owners;
 }
 
 
-async function getActiveOffers() {
-    let offersCount = parseInt(await app.call('getActiveOffersCount').toPromise(), 10);
-    let offers = [];
+async function getSellActiveOffers() {
+    let offersCount = parseInt(await app.call('getActiveSellOffersCount').toPromise(), 10);
+    let sell_offers = [];
     for (let i = 0; i != offersCount; ++i) {
-        offers.push(await app.call('getActiveOfferByIndex', i).toPromise());
+        sell_offers.push(await app.call('getActiveSellOfferByIndex', i).toPromise());
     }
-    return offers;
+    return sell_offers;
+}
+
+async function getBuyActiveOffers() {
+    let offersCount = parseInt(await app.call('getActiveBuyOffersCount').toPromise(), 10);
+    let buy_offers = [];
+    for (let i = 0; i != offersCount; ++i) {
+        buy_offers.push(await app.call('getActiveBuyOfferByIndex', i).toPromise());
+    }
+    return buy_offers;
 }

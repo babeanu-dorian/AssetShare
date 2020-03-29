@@ -16,7 +16,7 @@ import styled from 'styled-components'
 
 function App() {
     const {api, appState, path} = useAragonApi();
-    const {TOTAL_SHARES, treasuryBalance, funds, owners, offers, isSyncing} = appState;
+    const {TOTAL_SHARES, treasuryBalance, funds, owners, sell_offers, buy_offers, flag, isSyncing} = appState;
     const [selectedTab, setSelectedTab] = useState(0);
     const [amount, setAmount] = useState(0);
     const [message, setMessage] = useState('');
@@ -42,42 +42,33 @@ function App() {
     }
 
     function calculatePartialPrice(price, shares) {
-        if (newShares == "NaN") {
-            return 0
-        }
-        if (newShares == 0) {
-            return 0
-        }
-        if (newShares == shares) {
-            return price;
-        } else {
-            return (percentageToShares(newShares) / shares) * price;
-        }
+        return shares * price;
+
     }
 
     let selectedView;
 
-
-    function onlySpecificOffers(sellOrBuy) {
-        var temp = [];
-        if (sellOrBuy === "SELL") {
-            for (let i = 0; i < offers.length; i++) {
-                if (offers[i].offerType === "SELL") {
-                    temp.push(offers[i])
-                }
-            }
-            return temp
-        }
-        if (sellOrBuy === "BUY") {
-            for (let i = 0; i < offers.length; i++) {
-                if (offers[i].offerType === "BUY") {
-                    temp.push(offers[i])
-                }
-            }
-            return temp
-        }
-
-    }
+    //todo: remove this function if everything works
+    // function onlySpecificOffers(sellOrBuy) {
+    //     var temp = [];
+    //     if (sellOrBuy === "SELL") {
+    //         for (let i = 0; i < offers.length; i++) {
+    //             if (offers[i].offerType === "SELL") {
+    //                 temp.push(offers[i])
+    //             }
+    //         }
+    //         return temp
+    //     }
+    //     if (sellOrBuy === "BUY") {
+    //         for (let i = 0; i < offers.length; i++) {
+    //             if (offers[i].offerType === "BUY") {
+    //                 temp.push(offers[i])
+    //             }
+    //         }
+    //         return temp
+    //     }
+    //
+    // }
 
 
     switch (selectedTab) {
@@ -157,19 +148,18 @@ function App() {
                         <Button
                             display="label"
                             label="Publish Offer"
-                            onClick={() => api.offerToSell(percentageToShares(shares), price, (intendedBuyer ? intendedBuyer : anyAddress)).toPromise()}
+                            onClick={() => api.offerToSell(percentageToShares(shares), price).toPromise()}
                         />
                     </Buttons>
                     <DataView
                         display="table"
-                        fields={['Id', 'Seller', 'Intended Buyer', 'Shares (%)', 'Price (wei)', 'Partial', 'Buy', 'Cancel']}
-                        entries={onlySpecificOffers("SELL")}
-                        renderEntry={({id, seller, buyer, shares, price}) => {
+                        fields={['Id', 'Seller', 'Shares (%)', 'Price (wei)', 'Partial', 'Buy', 'Cancel']}
+                        entries={sell_offers}
+                        renderEntry={({id, creator, sharesRemaining, price}) => {
                             return [id,
-                                displayAddress(seller),
-                                displayAddress(buyer),
-                                sharesToPercentage(shares),
-                                calculatePartialPrice(price, shares),
+                                displayAddress(creator),
+                                sharesToPercentage(sharesRemaining),
+                                calculatePartialPrice(price, sharesRemaining),
                                 <TextInput.Number
                                     value={newShares}
                                     onChange={event => {
@@ -180,7 +170,8 @@ function App() {
                                     display="label"
                                     label="Buy"
                                     onClick={() => {
-                                        api.buyShares(id, percentageToShares(newShares), {'value': (calculatePartialPrice(price, shares))}).toPromise()
+                                        //todo
+                                        // api.buyShares(id, percentageToShares(newShares), {'value': (calculatePartialPrice(price, shares))}).toPromise()
                                     }
                                     }
                                 />,
@@ -218,26 +209,28 @@ function App() {
                             <Button
                                 display="label"
                                 label="Publish Offer"
-                                onClick={() =>
-                                    api.offerToBuy(percentageToShares(shares), price, (intendedBuyer ? intendedBuyer : anyAddress), {'value': price}).toPromise()}
+                                onClick={() =>{
+                                    api.offerToBuy(percentageToShares(shares), price, {'value': calculatePartialPrice(percentageToShares(price),shares)}).toPromise()
+                                    console.log(price)
+                                }
+                                }
                             />
                             <Button
                                 display="label"
                                 label="Test"
                                 onClick={() =>
-                                    console.log(offers)}
+                                    console.log((flag))}
                             />
                         </Buttons>
                         <DataView
                             display="table"
-                            fields={['Id', 'Buyer', 'Intended Seller', 'Shares (%)', 'Price (wei)', 'Partial shares', 'Sell', 'Cancel']}
-                            entries={onlySpecificOffers("BUY")}
-                            renderEntry={({id, seller, buyer, shares, price}) => {
+                            fields={['Id', 'Buyer', 'Shares (%)', 'Price (wei)', 'Partial shares', 'Sell', 'Cancel']}
+                            entries={buy_offers}
+                            renderEntry={({id, creator, sharesRemaining, price}) => {
                                 return [id,
-                                    displayAddress(seller),
-                                    displayAddress(buyer),
-                                    sharesToPercentage(shares),
-                                    price,
+                                    displayAddress(creator),
+                                    sharesToPercentage(sharesRemaining),
+                                    calculatePartialPrice(price, sharesRemaining),
                                     <TextInput.Number
                                         value={newShares}
                                         onChange={event => {
@@ -247,14 +240,12 @@ function App() {
                                     <Button
                                         display="label"
                                         label="Sell"
-                                        onClick={() => api.offerToSell(percentageToShares(newShares), calculatePartialPrice(price, shares), seller).toPromise()}
-
-                                        // onClick={() => api.buyShares(id, percentageToShares(newShares), {'value': (calculatePartialPrice(price, shares))}).toPromise()}
+                                        onClick={() => api.offerToSell(percentageToShares(newShares), calculatePartialPrice(price, shares)).toPromise()}
                                     />,
                                     <Button
                                         display="label"
                                         label="Cancel"
-                                        onClick={() => api.cancelOffer(id).toPromise()}
+                                        // onClick={() => api.cancelOffer(id).toPromise()}
                                     />
                                 ]
                             }}

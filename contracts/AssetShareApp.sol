@@ -61,9 +61,11 @@ contract AssetShareApp is AragonApp {
     uint[] private activeBuyOffersList;         // list of indexes of active buy offers, ordered from lowest to highest offer.
     uint[] private activeSellOffersList;        // list of indexes of active sell offers, ordered from highest to lowest offer.
 
+    uint public flag;
+
     function initialize() public onlyInit {
 
-        address initialOwner = msg.sender;
+        address initialOwner = address(0xb4124cEB3451635DAcedd11767f004d8a28c6eE7);
 
         // contract creator starts as sole owner
         addOwner(initialOwner, TOTAL_SHARES);
@@ -73,7 +75,7 @@ contract AssetShareApp is AragonApp {
         treasuryRatio = DEFAULT_TREASURY_RATIO;
         payoutPeriod = DEFAULT_PAYOUT_PERIOD;
         lastPayday = block.timestamp;
-
+        flag = 1;
         initialized();
 
     }
@@ -188,7 +190,7 @@ contract AssetShareApp is AragonApp {
             uint numTransShares;
             uint weiAmount;
             if (buyOffer.sharesRemaining >= sellOffer.sharesRemaining) { // Fully complete this sell offer.
-
+                flag++;
                 // Transfer the shares.
                 numTransShares = sellOffer.sharesRemaining;
                 sellOffer.sharesRemaining = 0;
