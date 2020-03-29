@@ -16,13 +16,13 @@ import styled from 'styled-components'
 
 function App() {
     const {api, appState, path} = useAragonApi();
-    const {TOTAL_SHARES, treasuryBalance, funds, owners, sell_offers, buy_offers, flag, isSyncing} = appState;
+    const {TOTAL_SHARES, treasuryBalance, funds, owners, sell_offers, buy_offers, isSyncing} = appState;
     const [selectedTab, setSelectedTab] = useState(0);
     const [amount, setAmount] = useState(0);
     const [message, setMessage] = useState('');
     const [shares, setShares] = useState(0);
     const [price, setPrice] = useState(0);
-    const [newShares, setNewShares] = useState(0);
+    const [partialShares, setPartialShares] = useState(0);
     const [newPrice, setNewPrice] = useState(0);
     const [intendedBuyer, setIntendedBuyer] = useState('');
     const anyAddress = '0x0000000000000000000000000000000000000000';
@@ -47,28 +47,6 @@ function App() {
     }
 
     let selectedView;
-
-    //todo: remove this function if everything works
-    // function onlySpecificOffers(sellOrBuy) {
-    //     var temp = [];
-    //     if (sellOrBuy === "SELL") {
-    //         for (let i = 0; i < offers.length; i++) {
-    //             if (offers[i].offerType === "SELL") {
-    //                 temp.push(offers[i])
-    //             }
-    //         }
-    //         return temp
-    //     }
-    //     if (sellOrBuy === "BUY") {
-    //         for (let i = 0; i < offers.length; i++) {
-    //             if (offers[i].offerType === "BUY") {
-    //                 temp.push(offers[i])
-    //             }
-    //         }
-    //         return temp
-    //     }
-    //
-    // }
 
 
     switch (selectedTab) {
@@ -153,33 +131,34 @@ function App() {
                     </Buttons>
                     <DataView
                         display="table"
-                        fields={['Id', 'Seller', 'Shares (%)', 'Price (wei)', 'Partial', 'Buy', 'Cancel']}
+                        fields={['Id', 'Seller', 'Remaining Shares (%)','Shares (%)', 'Price (wei)', 'Partial', 'Buy', 'Cancel']}
                         entries={sell_offers}
-                        renderEntry={({id, creator, sharesRemaining, price}) => {
+                        renderEntry={({id, creator, sharesRemaining, shares, price}) => {
                             return [id,
                                 displayAddress(creator),
+                                (sharesToPercentage(sharesRemaining)/sharesToPercentage(shares) * 100),
                                 sharesToPercentage(sharesRemaining),
                                 calculatePartialPrice(price, sharesRemaining),
                                 <TextInput.Number
-                                    value={newShares}
+                                    value={partialShares}
                                     onChange={event => {
-                                        setNewShares(parseInt(event.target.value), 10)
+                                        setPartialShares(parseInt(event.target.value), 10)
                                     }}
                                 />,
                                 <Button
                                     display="label"
                                     label="Buy"
                                     onClick={() => {
-                                        //todo
-                                        // api.buyShares(id, percentageToShares(newShares), {'value': (calculatePartialPrice(price, shares))}).toPromise()
+                                        api.offerToBuy(percentageToShares(partialShares),price, {'value': calculatePartialPrice(percentageToShares(price),partialShares)}).toPromise()
                                     }
                                     }
                                 />,
                                 <Button
                                     display="label"
                                     label="Cancel"
-                                    onClick={() => api.cancelOffer(id).toPromise()}
+                                    onClick={() => api.collectOffer(id).toPromise()}
                                 />
+
                             ]
                         }}
                     />
@@ -189,68 +168,69 @@ function App() {
         ${textStyle('body1')};
       `}
                     >
-                    Buy Offers
+                        Buy Offers
                     </div>
 
 
-                        Shares to buy (%): <TextInput.Number
-                        value={shares}
-                        onChange={event => setShares(parseInt(event.target.value), 10)}
-                    /> <br/>
-                        Price (wei): <TextInput.Number
-                        value={price}
-                        onChange={event => setPrice(parseInt(event.target.value), 10)}
-                    /> <br/>
-                        Intended buyer: <TextInput
-                        value={intendedBuyer}
-                        onChange={event => setIntendedBuyer(event.target.value)}
-                    /> <br/>
-                        <Buttons>
-                            <Button
-                                display="label"
-                                label="Publish Offer"
-                                onClick={() =>{
-                                    api.offerToBuy(percentageToShares(shares), price, {'value': calculatePartialPrice(percentageToShares(price),shares)}).toPromise()
-                                    console.log(price)
-                                }
-                                }
-                            />
-                            <Button
-                                display="label"
-                                label="Test"
-                                onClick={() =>
-                                    console.log((flag))}
-                            />
-                        </Buttons>
-                        <DataView
-                            display="table"
-                            fields={['Id', 'Buyer', 'Shares (%)', 'Price (wei)', 'Partial shares', 'Sell', 'Cancel']}
-                            entries={buy_offers}
-                            renderEntry={({id, creator, sharesRemaining, price}) => {
-                                return [id,
-                                    displayAddress(creator),
-                                    sharesToPercentage(sharesRemaining),
-                                    calculatePartialPrice(price, sharesRemaining),
-                                    <TextInput.Number
-                                        value={newShares}
-                                        onChange={event => {
-                                            setNewShares(parseInt(event.target.value), 10)
-                                        }}
-                                    />,
-                                    <Button
-                                        display="label"
-                                        label="Sell"
-                                        onClick={() => api.offerToSell(percentageToShares(newShares), calculatePartialPrice(price, shares)).toPromise()}
-                                    />,
-                                    <Button
-                                        display="label"
-                                        label="Cancel"
-                                        // onClick={() => api.cancelOffer(id).toPromise()}
-                                    />
-                                ]
-                            }}
+                    Shares to buy (%): <TextInput.Number
+                    value={shares}
+                    onChange={event => setShares(parseInt(event.target.value), 10)}
+                /> <br/>
+                    Price (wei): <TextInput.Number
+                    value={price}
+                    onChange={event => setPrice(parseInt(event.target.value), 10)}
+                /> <br/>
+                    Intended buyer: <TextInput
+                    value={intendedBuyer}
+                    onChange={event => setIntendedBuyer(event.target.value)}
+                /> <br/>
+                    <Buttons>
+                        <Button
+                            display="label"
+                            label="Publish Offer"
+                            onClick={() => {
+                                api.offerToBuy(percentageToShares(shares), price, {'value': calculatePartialPrice(percentageToShares(price), shares)}).toPromise()
+                                console.log(price)
+                            }
+                            }
                         />
-                    </Box>
+                        <Button
+                            display="label"
+                            label="Test"
+                            onClick={() =>
+                                console.log((sell_offers))}
+                        />
+                    </Buttons>
+                    <DataView
+                        display="table"
+                        fields={['Id', 'Buyer', 'Remaining shares (%)','Shares (%)', 'Price (wei)', 'Partial shares', 'Sell', 'Cancel']}
+                        entries={buy_offers}
+                        renderEntry={({id, creator, sharesRemaining, shares, price}) => {
+                            return [id,
+                                displayAddress(creator),
+                                (sharesToPercentage(sharesRemaining)/sharesToPercentage(shares) * 100),
+                                sharesToPercentage(sharesRemaining),
+                                calculatePartialPrice(price, sharesRemaining),
+                                <TextInput.Number
+                                    value={partialShares}
+                                    onChange={event => {
+                                        setPartialShares(parseInt(event.target.value), 10)
+                                    }}
+                                />,
+                                <Button
+                                    display="label"
+                                    label="Sell"
+                                    onClick={() => api.offerToSell(percentageToShares(partialShares), calculatePartialPrice(price, partialShares)).toPromise()}
+                                />,
+                                <Button
+                                    display="label"
+                                    label="Cancel"
+                                    onClick={() => api.collectOffer(id).toPromise()}
+                                />
+                            ]
+                        }}
+                    />
+                </Box>
 
             )
             break;

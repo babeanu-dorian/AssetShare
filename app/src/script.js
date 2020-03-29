@@ -70,14 +70,10 @@ function initializeState() {
             owners: await getOwners(),
             sell_offers: await getSellActiveOffers(),
             buy_offers: await getBuyActiveOffers(),
-            flag: await getFlag()
         }
     }
 }
 
-async function getFlag() {
-    return parseInt(await app.call('flag').toPromise(), 10);
-}
 
 async function getTotalShares() {
     return parseInt(await app.call('TOTAL_SHARES').toPromise(), 10);
