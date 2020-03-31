@@ -1,63 +1,42 @@
 /* global artifacts contract beforeEach it assert */
 
-const { assertRevert } = require('@aragon/test-helpers/assertThrow')
-const { hash } = require('eth-ens-namehash')
-const deployDAO = require('./helpers/deployDAO')
+const { assertRevert } = require('@aragon/test-helpers/assertThrow');
+const { hash } = require('eth-ens-namehash');
+const deployDAO = require('./helpers/deployDAO');
 
-const AssetShareApp = artifacts.require('AssetShareAppTestHelper.sol')
-
-const ANY_ADDRESS = '0xffffffffffffffffffffffffffffffffffffffff'
-const ADDRESS_1 = '0x0000000000000000000000000000000000000001'
-const ADDRESS_2 = '0x0000000000000000000000000000000000000002'
-const ADDRESS_3 = '0x0000000000000000000000000000000000000003'
+const AssetShareApp = artifacts.require('AssetShareAppTestHelper.sol');
 
 const getLog = (receipt, logName, argName) => {
-    const log = receipt.logs.find(({ event }) => event === logName)
-    return log ? log.args[argName] : null
+    const log = receipt.logs.find(({ event }) => event === logName);
+    return log ? log.args[argName] : null;
 }
 
-const deployedContract = receipt => getLog(receipt, 'NewAppProxy', 'proxy')
+const deployedContract = receipt => getLog(receipt, 'NewAppProxy', 'proxy');
 
-    let appBase, app
 contract('AssetShareAppTestHelper', ([contractCreator, appManager, user1, user2]) => {
+    let appBase, app;
     
     // eslint-disable-next-line no-undef
     before('deploy base app', async () => {
         // Deploy the app's base contract.
-        appBase = await AssetShareApp.new()
-    })
+        appBase = await AssetShareApp.new();
+    });
     
     beforeEach('deploy dao and app', async () => {
-        const { dao, acl } = await deployDAO(appManager)
+        const { dao, acl } = await deployDAO(appManager);
         
         // Instantiate a proxy for the app, using the base contract as its logic implementation.
         const newAppInstanceReceipt = await dao.newAppInstance(
             hash('foo.aragonpm.test'), // appId - Unique identifier for each app installed in the DAO; can be any bytes32 string in the tests.
-            appBase.address, // appBase - Location of the app's base implementation.
-            '0x', // initializePayload - Used to instantiate and initialize the proxy in the same call (if given a non-empty bytes string).
-            false, // setDefault - Whether the app proxy is the default proxy.
+            appBase.address,           // appBase - Location of the app's base implementation.
+            '0x',                      // initializePayload - Used to instantiate and initialize the proxy in the same call (if given a non-empty bytes string).
+            false,                     // setDefault - Whether the app proxy is the default proxy.
             { from: appManager }
-        )
-        app = await AssetShareApp.at(deployedContract(newAppInstanceReceipt))
+        );
+        app = await AssetShareApp.at(deployedContract(newAppInstanceReceipt));
         
-        // Set up the app's permissions.
-        // await acl.createPermission(
-            // ANY_ADDRESS, // entity (who?) - The entity or address that will have the permission.
-            // app.address, // app (where?) - The app that holds the role involved in this permission.
-            // INCREMENT_ROLE, // role (what?) - The particular role that the entity is being assigned to in this permission.
-            // appManager, // manager - Can grant/revoke further permissions for this role.
-            // { from: appManager }
-        // )
-        // await acl.createPermission(
-            // ANY_ADDRESS,
-            // app.address,
-            // DECREMENT_ROLE,
-            // appManager,
-            // { from: appManager }
-        // )
-
-    })
         await app.initialize({from: contractCreator});
+    });
     
     it('Initialize with single owner having all shares', async () => {
         
@@ -107,18 +86,4 @@ contract('AssetShareAppTestHelper', ([contractCreator, appManager, user1, user2]
         // Assert that the owners have received the payout.
         // TODO - How to get Ether from address?
     });
-    
-    it('Testing to see if we can call internal functions', async () => {
-        
-        await app.callAddOwner(ADDRESS_1, 0);
-    });
-    
-    // it('should be incremented by any address', async () => {
-        // await app.increment(1, { from: user })
-        // assert.equal(await app.value(), 1)
-    // })
-    
-    // it('should not be decremented if already 0', async () => {
-        // await assertRevert(app.decrement(1), 'MATH_SUB_UNDERFLOW')
-    // })
 })
