@@ -4,7 +4,7 @@ const { assertRevert } = require('@aragon/test-helpers/assertThrow')
 const { hash } = require('eth-ens-namehash')
 const deployDAO = require('./helpers/deployDAO')
 
-const AssetShareApp = artifacts.require('AssetShareAppHelper.sol')
+const AssetShareApp = artifacts.require('AssetShareAppTestHelper.sol')
 
 const ANY_ADDRESS = '0xffffffffffffffffffffffffffffffffffffffff'
 const ADDRESS_1 = '0x0000000000000000000000000000000000000001'
@@ -18,7 +18,7 @@ const getLog = (receipt, logName, argName) => {
 
 const deployedContract = receipt => getLog(receipt, 'NewAppProxy', 'proxy')
 
-contract('AssetShareAppHelper', ([appManager, user1, user2]) => {
+contract('AssetShareAppTestHelper', ([appManager, user1, user2]) => {
     let appBase, app
     
     // eslint-disable-next-line no-undef
