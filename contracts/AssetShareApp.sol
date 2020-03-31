@@ -77,7 +77,7 @@ contract AssetShareApp is AragonApp {
 
     }
 
-    function getShares(address owner) external view returns (uint) {
+    function getSharesByAddress(address owner) external view returns (uint) {
         return ownershipMap[owner].shares;
     }
 
@@ -102,7 +102,7 @@ contract AssetShareApp is AragonApp {
     }
 
     // creates a new owner
-    function addOwner(address ownerAddress, uint shares) private {
+    function addOwner(address ownerAddress, uint shares) internal {
         ownershipMap[ownerAddress] = Owner(shares, 0, ownerList.length);
         ownerList.push(ownerAddress);
     }
