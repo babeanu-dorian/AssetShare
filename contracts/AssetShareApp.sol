@@ -14,13 +14,14 @@ contract AssetShareApp is AragonApp {
     event NEW_PROPOSAL(uint id);
     event EXECUTED_PROPOSAL(uint id);
     event CANCELLED_PROPOSAL(uint id);
-    event SUPPORT_TRANSFERRED(address voter, uint oldPropId, uint newPropId);
+    event REMOVED_SUPPORTED_PROPOSAL(uint idx);
+    event VOTE(address voter, uint propId, bool vote);
 
-    struct Owner {               // used to store shareholder information
-        uint shares;             // amount of shares owned by shareholder
-        uint sharesOnSale;       // amount of the owner's shares currently on sale
-        uint listPosition;       // position in the ownerList
-        uint supportedProposal;  // the id of the proposal currently supported
+    struct Owner {                  // used to store shareholder information
+        uint shares;                // amount of shares owned by shareholder
+        uint sharesOnSale;          // amount of the owner's shares currently on sale
+        uint listPosition;          // position in the ownerList
+        uint[] supportedProposals;  // list of ids of proposals currently supported
     }
 
     enum OfferType {
@@ -47,6 +48,7 @@ contract AssetShareApp is AragonApp {
         CHANGE_PAYOUT_PERIOD,            // edit the value of payoutPeriod
         CHANGE_TREASURY_RATIO,           // edit the value of treasuryRatio
         EXECUTE_EXTERNAL_CONTRACT,       // execute a function on an external contract (may use treasury funds)
+        ORIGINAL,                        // free format proposal
         SEND_MONEY                       // send money from the treasury to an address
     }
 
@@ -57,18 +59,21 @@ contract AssetShareApp is AragonApp {
         address addressArg;              // address argument to be passed to the function
     }
 
-    struct Proposal {                    // describes a proposal for changing the configurations of
-                                         //     this contract, or for executing an external contract
-        uint id;                         // proposal id
-        address owner;                   // address of the owner who made the proposal
-        uint listPosition;               // index in the activeProposalList
-                                         //     (MISSING if not active)
-        string reason;                   // reasons provided for the change
-        Task task;                       // instructions to execute if the proposal is approved
-        uint support;                    // total amount of shares voting 'yes'
-        uint creationDate;               // unix timestamp of the date when the proposal was made
-        uint completionDate;             // unix timestamp of the date when the proposal was approved
-        bool cancelled;                  // whether or not the proposal was cancelled
+    struct Proposal {                          // describes a proposal for changing the configurations of
+                                               //     this contract, or for executing an external contract
+        uint id;                               // proposal id
+        address owner;                         // address of the owner who made the proposal
+        uint listPosition;                     // index in the activeProposalList
+                                               //     (MISSING if not active)
+        string reason;                         // reasons provided for the change
+        Task task;                             // instructions to execute if the proposal is approved
+        uint support;                          // total amount of shares voting 'yes'
+        mapping(address => uint) supportMap;   // amount of shares pledged by each owner
+        mapping(address => uint) positionMap;  // proposal position in the supportedProposals list of each owner
+        uint creationDate;                     // unix timestamp of the date when the proposal was made
+        uint expirationDate;                   // unix timestamp of the date when the proposal expires
+        uint completionDate;                   // unix timestamp of the date when the proposal was approved
+        bool cancelled;                        // whether or not the proposal was cancelled
     }
 
     uint constant public MISSING = ~uint256(0);                  // max uint value, signals missing data
@@ -134,24 +139,17 @@ contract AssetShareApp is AragonApp {
         return ownershipMap[owner].shares;
     }
 
-    function getShares() external view returns (uint) {
-        return ownershipMap[msg.sender].shares;
-    }
-
     function getSharesOnSale(address owner) external view returns (uint) {
         return ownershipMap[owner].sharesOnSale;
     }
 
-    function getSharesOnSale() external view returns (uint) {
-        return ownershipMap[msg.sender].sharesOnSale;
+    function getSupportedProposalsCount(address owner) external view returns (uint) {
+        return ownershipMap[owner].supportedProposals.length;
     }
 
-    function getSupportedProposal(address owner) external view returns (uint) {
-        return ownershipMap[owner].supportedProposal;
-    }
-
-    function getSupportedProposal() external view returns (uint) {
-        return ownershipMap[msg.sender].supportedProposal;
+    function getSupportedProposalIdByIndex(address owner, uint idx) external view returns (uint) {
+        require(idx < ownershipMap[owner].supportedProposals.length, "Invalid supported proposal index.");
+        return ownershipMap[owner].supportedProposals[idx];
     }
 
     function getOwnersCount() external view returns (uint) {
@@ -159,6 +157,7 @@ contract AssetShareApp is AragonApp {
     }
 
     function getOwnerAddressByIndex(uint idx) external view returns (address) {
+        require(idx < ownerList.length, "Invalid owner index.");
         return ownerList[idx];
     }
 
@@ -171,7 +170,6 @@ contract AssetShareApp is AragonApp {
             addOwner(ownerAddress, amount);
         } else {
             owner.shares += amount;
-            increaseProposalSupport(owner.supportedProposal, amount);
         }
     }
 
@@ -184,12 +182,16 @@ contract AssetShareApp is AragonApp {
         if (owner.shares == 0) {
             removeOwner(ownerAddress);
         }
-        decreaseProposalSupport(owner.supportedProposal, amount);
     }
 
     // creates a new owner
     function addOwner(address ownerAddress, uint shares) private {
-        ownershipMap[ownerAddress] = Owner(shares, 0, ownerList.length, MISSING);
+        ownershipMap[ownerAddress] = Owner({
+            shares: shares,
+            sharesOnSale: 0,
+            listPosition: ownerList.length,
+            supportedProposals: new uint[](0)
+        });
         ownerList.push(ownerAddress);
     }
 
@@ -261,7 +263,11 @@ contract AssetShareApp is AragonApp {
     // set the price to 0 for gift
     function offerToSell(uint sharesAmount, uint price, address receiver) external {
 
+        require(ownershipMap[msg.sender].supportedProposals.length == 0,
+            "You cannot sell shares while supporting proposals.");
+
         require(sharesAmount > 0, "0-shares auctions are not allowed.");
+
         require(sharesAmount  + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares,
             "Caller does not own this many shares.");
 
@@ -326,9 +332,9 @@ contract AssetShareApp is AragonApp {
         }
 
         uint pos = offer.listPosition;
-        offer.listPosition = MISSING;
         activeOffersList[pos] = activeOffersList[activeOffersList.length - 1];
         offerList[activeOffersList[pos]].listPosition = pos;
+        offer.listPosition = MISSING;
         --activeOffersList.length;
     }
 
@@ -381,39 +387,81 @@ contract AssetShareApp is AragonApp {
         return proposalApprovalThreshold;
     }
 
+    function isActiveProposal(uint id) private view returns (bool) {
+        return proposalList[id].listPosition != MISSING && proposalList[id].expirationDate > block.timestamp;
+    }
+
+    function removeSupportedProposalByIndex(uint idx) private {
+        Owner storage owner = ownershipMap[msg.sender];
+        owner.supportedProposals[idx] = owner.supportedProposals[owner.supportedProposals.length - 1];
+        proposalList[owner.supportedProposals[idx]].positionMap[msg.sender] = idx;
+        --owner.supportedProposals.length;
+    }
+
+    function removeInactiveSupportedProposalByIndex(uint idx) external {
+        Owner storage owner = ownershipMap[msg.sender];
+        require(idx < owner.supportedProposals.length, "Invalid supported proposal index.");
+        require(!isActiveProposal(owner.supportedProposals[idx]),
+            "The proposal is still active, call revokeProposalSupport.");
+        removeSupportedProposalByIndex(idx);
+        emit REMOVED_SUPPORTED_PROPOSAL(idx);
+    }
+
     function getTaskFunctionValues() external pure returns (TaskFunction CHANGE_APPROVAL_TRESHOLD,
                                                             TaskFunction CHANGE_ASSET_DESCRIPTION,
                                                             TaskFunction CHANGE_PAYOUT_PERIOD,
                                                             TaskFunction CHANGE_TREASURY_RATIO,
                                                             TaskFunction EXECUTE_EXTERNAL_CONTRACT,
+                                                            TaskFunction ORIGINAL,
                                                             TaskFunction SEND_MONEY) {
         CHANGE_APPROVAL_TRESHOLD = TaskFunction.CHANGE_APPROVAL_TRESHOLD;
         CHANGE_ASSET_DESCRIPTION = TaskFunction.CHANGE_ASSET_DESCRIPTION;
         CHANGE_PAYOUT_PERIOD = TaskFunction.CHANGE_PAYOUT_PERIOD;
         CHANGE_TREASURY_RATIO = TaskFunction.CHANGE_TREASURY_RATIO;
         EXECUTE_EXTERNAL_CONTRACT = TaskFunction.EXECUTE_EXTERNAL_CONTRACT;
+        ORIGINAL = TaskFunction.ORIGINAL;
         SEND_MONEY = TaskFunction.SEND_MONEY;
     }
 
-    // publishes a new proposal, automatically transfers the publisher's support to the new proposal
-    function makeProposal(string reason, uint functionId, uint uintArg, string stringArg, address addressArg) external {
+    // publishes a new proposal, the author starts with a 'yes' vote on it
+    function makeProposal(string reason, uint expirationDate, uint functionId, uint uintArg,
+                          string stringArg, address addressArg) external {
         
         requireOwner("Only owners can make proposals.");
+
+        Owner storage owner = ownershipMap[msg.sender];
+
+        require(owner.sharesOnSale == 0, "You cannot make proposals while selling shares.");
+
+        require(expirationDate > block.timestamp, "Expiration date must be in the future.");
         
         validateProposalArgs(TaskFunction(functionId), uintArg, stringArg, addressArg);
 
         uint id = proposalList.length;
 
         // create new active proposal
-        proposalList.push(Proposal(id, msg.sender, activeProposalsList.length, reason,
-                                    Task(TaskFunction(functionId), uintArg, stringArg, addressArg),
-                                    0, block.timestamp, 0, false));
+        proposalList.push(
+            Proposal({
+                id: id,
+                owner: msg.sender,
+                listPosition: activeProposalsList.length,
+                reason: reason,
+                task: Task(TaskFunction(functionId), uintArg, stringArg, addressArg),
+                support: owner.shares,  // proposal publisher starts with 'yes' vote
+                creationDate: block.timestamp,
+                expirationDate: expirationDate,
+                completionDate: 0,
+                cancelled: false
+            })
+        );
         activeProposalsList.push(id);
 
-        emit NEW_PROPOSAL(id);
-
         // proposal publisher starts with 'yes' vote
-        transferProposalSupport(msg.sender, id);
+        proposalList[id].supportMap[msg.sender] = owner.shares;
+        proposalList[id].positionMap[msg.sender] = owner.supportedProposals.length;
+        owner.supportedProposals.push(id);
+
+        emit NEW_PROPOSAL(id);
     }
 
     function validateProposalArgs(TaskFunction functionId, uint uintArg, string stringArg, address addressArg) private pure {
@@ -424,60 +472,57 @@ contract AssetShareApp is AragonApp {
                 "Treasury ratio cannot exceed 100%");
     }
 
-    // implements a 'yes' vote,
-    // if the caller is already supporting a different proposal, their support is transferred
+    // implements a 'yes' vote or updates the weight of a preexisting vote
     function supportProposal(uint id) external {
 
         requireOwner("Only owners can vote.");
 
         require(id < proposalList.length, "Invalid proposal id.");
 
-        require(proposalList[id].listPosition != MISSING, "The proposal is no longer active.");
+        require(isActiveProposal(id), "The proposal is no longer active.");
 
-        transferProposalSupport(msg.sender, id);
+        Owner storage owner = ownershipMap[msg.sender];
+
+        Proposal storage proposal = proposalList[id];
+
+        require(owner.sharesOnSale == 0, "You cannot vote while selling shares.");
+
+        require(owner.shares > proposal.supportMap[msg.sender], "Caller is already fully supporting this proposal.");
+
+        if (proposal.supportMap[msg.sender] == 0) {
+            // owner is not already supporting this proposal
+            proposal.positionMap[msg.sender] = owner.supportedProposals.length;
+            owner.supportedProposals.push(id);
+            proposal.support += owner.shares;
+        } else {
+            // owner is already supporting this proposal, but has more shares now
+            proposal.support += owner.shares - proposal.supportMap[msg.sender];
+        }
+
+        proposal.supportMap[msg.sender] = owner.shares;
+
+        emit VOTE(msg.sender, id, true);
     }
 
-    // revokes support from the proposal currently supported by the caller
-    function revokeProposalSupport() external {
+    // revokes support from an active proposal
+    function revokeProposalSupport(uint id) external {
         // check for owner not necessary
-        transferProposalSupport(msg.sender, MISSING);
-    }
+        // check for selling offers not necessary
 
-    // transfers the support of the given owner from the current proposal to another one
-    function transferProposalSupport(address ownerAddress, uint propId) private {
+        require(id < proposalList.length, "Invalid proposal id.");
 
-        Owner storage owner = ownershipMap[ownerAddress];
+        require(isActiveProposal(id), "The proposal is no longer active.");
 
-        // revoke support from current 
-        decreaseProposalSupport(owner.supportedProposal, owner.shares);
-        increaseProposalSupport(propId, owner.shares);
-        emit SUPPORT_TRANSFERRED(ownerAddress, owner.supportedProposal, propId);
-        owner.supportedProposal = propId;
-    }
+        Proposal storage proposal = proposalList[id];
 
-    function increaseProposalSupport(uint id, uint amount) private {
-        if (id >= proposalList.length) {
-            return; // invalid proposal id
-        }
+        require(proposal.supportMap[msg.sender] != 0, "Caller is not supporting this proposal.");
 
-        if (proposalList[id].listPosition == MISSING) {
-            return; // inactive proposal
-        }
+        proposal.support -= proposal.supportMap[msg.sender];
+        proposal.supportMap[msg.sender] = 0;
 
-
-        proposalList[id].support += amount;
-    }
-
-    function decreaseProposalSupport(uint id, uint amount) private {
-        if (id >= proposalList.length) {
-            return; // invalid proposal id
-        }
-
-        if (proposalList[id].listPosition == MISSING) {
-            return; // inactive proposal
-        }
-
-        proposalList[id].support -= amount;
+        removeSupportedProposalByIndex(proposal.positionMap[msg.sender]);
+        
+        emit VOTE(msg.sender, id, false);
     }
 
     function executeProposal(uint id) external {
@@ -485,7 +530,7 @@ contract AssetShareApp is AragonApp {
 
         Proposal storage proposal = proposalList[id];
 
-        require(proposal.listPosition != MISSING, "The proposal is no longer active.");
+        require(isActiveProposal(id), "The proposal is no longer active.");
 
         require(proposal.support >= proposalApprovalThreshold, "The proposal does not have enough support.");
 
@@ -528,7 +573,7 @@ contract AssetShareApp is AragonApp {
             require(proposal.task.addressArg.send(proposal.task.uintArg),
                 "Funds could not be sent, transaction denied.");
             treasuryBalance -= proposal.task.uintArg;
-        }
+        } // nothing to do for TaskFunction.ORIGINAL
 
         deactivateProposal(id);
 
@@ -538,8 +583,9 @@ contract AssetShareApp is AragonApp {
     // deactivates an active proposal owned by the caller
     function cancelProposal(uint id) external {
         require(id < proposalList.length, "Invalid proposal id.");
-        require(msg.sender == proposalList[id].owner, "Caller does not own this proposal.");
         require(proposalList[id].listPosition != MISSING, "Proposal is already inactive.");
+        require(msg.sender == proposalList[id].owner || proposalList[id].expirationDate <= block.timestamp,
+            "Only the author of the proposal can cancel it before its expiration date.");
 
         proposalList[id].cancelled = true;
         deactivateProposal(id);
@@ -552,9 +598,9 @@ contract AssetShareApp is AragonApp {
         proposal.completionDate = block.timestamp;
 
         uint pos = proposal.listPosition;
-        proposal.listPosition = MISSING;
         activeProposalsList[pos] = activeProposalsList[activeProposalsList.length - 1];
         proposalList[activeProposalsList[pos]].listPosition = pos;
+        proposal.listPosition = MISSING;
         --activeProposalsList.length;
     }
 
@@ -575,6 +621,7 @@ contract AssetShareApp is AragonApp {
                                                                        address addressArg,
                                                                        uint support,
                                                                        uint creationDate,
+                                                                       uint expirationDate,
                                                                        uint completionDate,
                                                                        bool cancelled) {
         require(idx < activeProposalsList.length, "Invalid active proposal index.");
@@ -590,6 +637,7 @@ contract AssetShareApp is AragonApp {
                                                            address addressArg,
                                                            uint support,
                                                            uint creationDate,
+                                                           uint expirationDate,
                                                            uint completionDate,
                                                            bool cancelled) {
         require(propId < proposalList.length, "Invalid proposal id.");
@@ -603,6 +651,7 @@ contract AssetShareApp is AragonApp {
         addressArg = proposal.task.addressArg;
         support = proposal.support;
         creationDate = proposal.creationDate;
+        expirationDate = proposal.expirationDate;
         completionDate = proposal.completionDate;
         cancelled = proposal.cancelled;
     }

@@ -9,16 +9,17 @@ const reducer = state => {
       TOTAL_SHARES: 0,
       TREASURY_RATIO_DENOMINATOR: 0,
       functionIds: {},
+      currentUser: '',
       assetDescription: '',
       treasuryRatio: 0,
       payoutPeriod: 0,
       proposalApprovalThreshold: 0,
     	treasuryBalance: 0,
     	funds: 0,
-      supportedProposal: -1,
       owners: [],
       offers: [],
       proposals: [],
+      supportedProposals: [],
     	isSyncing: true
     }
   }

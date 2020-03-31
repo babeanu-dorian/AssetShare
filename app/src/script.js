@@ -5,12 +5,12 @@ import Aragon, {events} from '@aragon/api'
 const app = new Aragon()
 
 app.store(
-async (state, {event}) => {
+    async (state, event) => {
         const nextState = {
             ...state,
         }
         try {
-            switch (event) {
+            switch (event.event) {
                 case 'PAYMENT_RECEIVED':
                     return {
                         ...nextState,
@@ -33,16 +33,15 @@ async (state, {event}) => {
                     return {
                         ...nextState,
                         owners: await getOwners(),
-                        offers: await getActiveOffers(),
-                        proposals: await getActiveProposals()
+                        offers: await getActiveOffers()
                     }
-                case 'NEW_PEOPOSAL':
+                case 'NEW_PROPOSAL':
                 case 'CANCELLED_PROPOSAL':
-                case 'SUPPORT_TRANSFERRED':
+                case 'VOTE':
                     return {
                         ...nextState,
-                        supportedProposal: await getSupportedProposal(),
-                        proposals: await getActiveProposals()
+                        proposals: await getActiveProposals(),
+                        supportedProposals: await getSupportedProposals(state.currentUser)
                     }
                 case 'EXECUTED_PROPOSAL':
                     return {
@@ -52,8 +51,19 @@ async (state, {event}) => {
                         payoutPeriod: await getPayoutPeriod(),
                         proposalApprovalThreshold: await getProposalApprovalThreshold(),
                         treasuryBalance: await getTreasuryBalance(),
-                        supportedProposal: await getSupportedProposal(),
-                        proposals: await getActiveProposals()
+                        proposals: await getActiveProposals(),
+                        supportedProposals: await getSupportedProposals(state.currentUser)
+                    }
+                case 'REMOVED_SUPPORTED_PROPOSAL':
+                    return {
+                        ...nextState,
+                        supportedProposals: await getSupportedProposals(state.currentUser)
+                    }
+                case 'ACCOUNTS_TRIGGER':
+                    return {
+                        ...nextState,
+                        currentUser: event.returnValues.account,
+                        supportedProposals: await getSupportedProposals(event.returnValues.account)
                     }
                 case events.SYNC_STATUS_SYNCING:
                     return {...nextState, isSyncing: true}
@@ -84,16 +94,17 @@ function initializeState() {
             TOTAL_SHARES: await getTotalShares(),
             TREASURY_RATIO_DENOMINATOR: await getTreasuryRatioDenominator(),
             functionIds: await getTaskFunctionValues(),
+            currentUser: '',
             assetDescription: await getAssetDescription(),
             treasuryRatio: await getTreasuryRatio(),
             payoutPeriod: await getPayoutPeriod(),
             proposalApprovalThreshold: await getProposalApprovalThreshold(),
             treasuryBalance: await getTreasuryBalance(),
             funds: await getFunds(),
-            supportedProposal: await getSupportedProposal(),
             owners: await getOwners(),
             offers: await getActiveOffers(),
-            proposals: await getActiveProposals()
+            proposals: await getActiveProposals(),
+            supportedProposals: []
         }
     }
 }
@@ -107,9 +118,7 @@ async function getTreasuryRatioDenominator() {
 }
 
 async function getTaskFunctionValues() {
-    let temp = await app.call('getTaskFunctionValues').toPromise();
-    console.log(temp);
-    return temp;
+    return await app.call('getTaskFunctionValues').toPromise();
 }
 
 async function getAssetDescription() {
@@ -134,12 +143,6 @@ async function getTreasuryBalance() {
 
 async function getFunds() {
     return parseInt(await app.call('getFunds').toPromise(), 10);
-}
-
-async function getSupportedProposal() {
-    let temp = parseInt(await app.call('getSupportedProposal').toPromise(), 10);
-    console.log('Supported proposal: ' + temp);
-    return temp;
 }
 
 async function getOwners() {
@@ -170,6 +173,21 @@ async function getActiveProposals() {
     let proposals = [];
     for (let i = 0; i != count; ++i) {
         proposals.push(await app.call('getActiveProposalByIndex', i).toPromise());
+    }
+    return proposals;
+}
+
+async function getSupportedProposals(owner) {
+
+    if (!owner) return [];
+
+    let count = parseInt(await app.call('getSupportedProposalsCount', owner).toPromise(), 10);
+    let proposals = [];
+    for (let i = 0; i != count; ++i) {
+        let id = parseInt(await app.call('getSupportedProposalIdByIndex', owner, i).toPromise(), 10);
+        let proposal = await app.call('getProposal', id).toPromise();
+        proposal.idx = i;
+        proposals.push(proposal);
     }
     return proposals;
 }

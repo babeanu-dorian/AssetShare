@@ -5,6 +5,7 @@ import {
     Box,
     Button,
     DataView,
+    DateRangePicker,
     DropDown,
     GU,
     Header,
@@ -19,16 +20,16 @@ import {
     textStyle,
     ContextMenu,
     ContextMenuItem
-
 } from '@aragon/ui'
 import styled from 'styled-components'
 
 function App() {
-    const {api, appState, path, connectedAccount} = useAragonApi();
+    const {api, appState, path} = useAragonApi();
     const {
         TOTAL_SHARES,
         TREASURY_RATIO_DENOMINATOR,
         functionIds,
+        currentUser,
         assetDescription,
         treasuryRatio,
         payoutPeriod,
@@ -38,7 +39,7 @@ function App() {
         owners,
         offers,
         proposals,
-        supportedProposal,
+        supportedProposals,
         isSyncing
     } = appState;
     const [selectedTab, setSelectedTab] = useState(0);
@@ -57,7 +58,9 @@ function App() {
     const [amountToSendInCall, setAmountToSendInCall] = useState('');
     const [addressToSend, setAddressToSend] = useState('');
     const [amountToSend, setAmountToSend] = useState('');
+    const [proposalText, setProposalText] = useState('');
     const [proposalReason, setProposalReason] = useState('');
+    const [endDate, setEndDate] = useState('' + dateToUnixTimestamp(new Date()));
     const anyAddress = '0x0000000000000000000000000000000000000000';
 
     function percentageToAmount(percentage, total) {
@@ -70,6 +73,26 @@ function App() {
 
     function displayAddress(address) {
         return (address == anyAddress ? '-' : <IdentityBadge entity={address}/>);
+    }
+
+    function dateToUnixTimestamp(date) {
+        return Math.floor(date.getTime() / 1000);
+    }
+
+    function displayDate(unixTime) {
+        let date = new Date(unixTime * 1000);
+        let year = date.getFullYear();
+        let month = toDoubleDigits(1 + date.getMonth());
+        let day = toDoubleDigits(date.getDate());
+        let hour = toDoubleDigits(date.getHours());
+        let minute = toDoubleDigits(date.getMinutes());
+
+        return '' + day + '.' + month + '.' + year + ' ' + hour + ':' + minute;
+    }
+
+    function toDoubleDigits(n) {
+        if (n > 9) return n;
+        return '0' + n;
     }
 
     function proposalDescription(functionId, uintArg, stringArg, addressArg) {
@@ -103,7 +126,9 @@ function App() {
                        + stringArg
                        + ' of contract '
                        + displayAddress(addressArg)
-                       + '.'; 
+                       + '.';
+            case functionIds.ORIGINAL:
+                return stringArg;
             case functionIds.SEND_MONEY:
                 return 'Transfer '
                        + uintArg
@@ -122,7 +147,80 @@ function App() {
                 <Box>{assetDescription}</Box>
             );
             break;
-        case 1: //Payments
+        case 1: //Your Profile
+            selectedView = (
+                <Box>
+                    Address: {displayAddress(currentUser)} <br/>
+                    Shares: TODO <br/>
+                    Unclaimed Revenue: TODO <br/>
+                    Supported Proposals: <br/>
+                    <DataView
+                        display="table"
+                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Increase Support', 'Revoke Support', 'Implement', 'Cancel', 'Remove']}
+                        entries={supportedProposals}
+                        renderEntry={({id, idx, owner, reason, completionDate, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
+
+                            let active = (completionDate == 0) && (expirationDate > dateToUnixTimestamp(new Date()));
+
+                            return [
+                                id,
+                                displayAddress(owner),
+                                proposalDescription(functionId, uintArg, stringArg, addressArg),
+                                reason,
+                                amountToPercentage(support, TOTAL_SHARES),
+                                displayDate(expirationDate),
+                                (active ?
+                                    <Button
+                                        display="label"
+                                        label="Increase Support"
+                                        onClick={() => api.supportProposal(id).toPromise()}
+                                    />
+                                    :
+                                    '-'
+                                ),
+                                (active ?
+                                    <Button
+                                        display="label"
+                                        label="Revoke Support"
+                                        onClick={() => api.revokeProposalSupport(id).toPromise()}
+                                    />
+                                    :
+                                    '-'
+                                ),
+                                (active ?
+                                    <Button
+                                        display="label"
+                                        label="Implement"
+                                        onClick={() => api.executeProposal(id).toPromise()}
+                                    />
+                                    :
+                                    '-'
+                                ),
+                                (active ?
+                                    <Button
+                                        display="label"
+                                        label="Cancel"
+                                        onClick={() => api.cancelProposal(id).toPromise()}
+                                    />
+                                    :
+                                    '-'
+                                ),
+                                (active ?
+                                    '-'
+                                    :
+                                    <Button
+                                        display="label"
+                                        label="Remove"
+                                        onClick={() => api.removeInactiveSupportedProposalByIndex(idx).toPromise()}
+                                    />
+                                )
+                            ]
+                        }}
+                    />
+                </Box>
+            );
+            break;
+        case 2: //Payments
             selectedView = (
                 <Box>
                     TreasuryBalance: {treasuryBalance} <br/>
@@ -156,7 +254,7 @@ function App() {
                 </Box>
             );
             break;
-        case 2: //Owners
+        case 3: //Owners
             selectedView = (
                 <Box>
                     <DataView
@@ -170,7 +268,7 @@ function App() {
                 </Box>
             );
             break;
-        case 3: //Offers
+        case 4: //Offers
             selectedView = (
                 <Box>
                     Shares to sell (%): <TextInput.Number
@@ -220,7 +318,7 @@ function App() {
                 </Box>
             );
             break;
-        case 4: //Proposals
+        case 5: //Proposals
 
             let proposalForm;
 
@@ -237,12 +335,17 @@ function App() {
                                 value={proposalReason}
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
+                            End date (UNIX): <TextInput.Number
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
                                     api.makeProposal(
                                         proposalReason,
+                                        parseInt(endDate),
                                         functionIds.CHANGE_APPROVAL_TRESHOLD,
                                         percentageToAmount(parseFloat(newApprovalThreshold, 10), TOTAL_SHARES),
                                         '',
@@ -265,12 +368,17 @@ function App() {
                                 value={proposalReason}
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
+                            End date (UNIX): <TextInput.Number
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
                                     api.makeProposal(
                                         proposalReason,
+                                        parseInt(endDate),
                                         functionIds.CHANGE_ASSET_DESCRIPTION,
                                         0,
                                         newAssetDescription,
@@ -293,12 +401,17 @@ function App() {
                                 value={proposalReason}
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
+                            End date (UNIX): <TextInput.Number
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
                                     api.makeProposal(
                                         proposalReason,
+                                        parseInt(endDate),
                                         functionIds.CHANGE_PAYOUT_PERIOD,
                                         parseInt(newPayoutPeriod, 10),
                                         '',
@@ -321,12 +434,17 @@ function App() {
                                 value={proposalReason}
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
+                            End date (UNIX): <TextInput.Number
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
                                     api.makeProposal(
                                         proposalReason,
+                                        parseInt(endDate),
                                         functionIds.CHANGE_TREASURY_RATIO,
                                         percentageToAmount(parseFloat(newTreasuryRatio, 10), TREASURY_RATIO_DENOMINATOR),
                                         '',
@@ -356,16 +474,54 @@ function App() {
                                 value={proposalReason}
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
+                            End date (UNIX): <TextInput.Number
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
                                     api.makeProposal(
                                         proposalReason,
+                                        parseInt(endDate),
                                         functionIds.EXECUTE_EXTERNAL_CONTRACT,
                                         parseInt(amountToSendInCall, 10),
                                         functionSignature,
                                         contractAddress
+                                    ).toPromise()
+                                }
+                            />
+                        </div>
+                    );
+                    break;
+                case functionIds.ORIGINAL:
+                    proposalForm = (
+                        <div>
+                            Proposal:<br/>
+                            <TextInput
+                                value={proposalText}
+                                onChange={event => setProposalText(event.target.value)}
+                            /> <br/>
+                            Reason: <TextInput
+                                value={proposalReason}
+                                onChange={event => setProposalReason(event.target.value)}
+                            /> <br/>
+                            End date (UNIX): <TextInput.Number
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
+                            <Button
+                                display="label"
+                                label="Make proposal"
+                                onClick={() =>
+                                    api.makeProposal(
+                                        proposalReason,
+                                        parseInt(endDate),
+                                        functionIds.ORIGINAL,
+                                        0,
+                                        proposalText,
+                                        anyAddress
                                     ).toPromise()
                                 }
                             />
@@ -387,12 +543,17 @@ function App() {
                                 value={proposalReason}
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
+                            End date (UNIX): <TextInput.Number
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
                                     api.makeProposal(
                                         proposalReason,
+                                        parseInt(endDate),
                                         functionIds.SEND_MONEY,
                                         parseInt(amountToSend, 10),
                                         '',
@@ -413,6 +574,7 @@ function App() {
                             'Change payout period.',
                             'Change percentage of income placed in the treasury.',
                             'Call the function of another contract using treasury funds.',
+                            'Free-form proposal.',
                             'Send money from the treasury to an address.'
                         ]}
                         selected={selectedProposalFunction}
@@ -421,15 +583,16 @@ function App() {
                     {proposalForm}
                     <DataView
                         display="table"
-                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'Agree', 'Implement', 'Cancel']}
+                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Agree', 'Implement', 'Cancel']}
                         entries={proposals}
-                        renderEntry={({id, owner, reason, functionId, uintArg, stringArg, addressArg, support}) => {
+                        renderEntry={({id, owner, reason, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
                             return [
                                 id,
                                 displayAddress(owner),
                                 proposalDescription(functionId, uintArg, stringArg, addressArg),
                                 reason,
                                 amountToPercentage(support, TOTAL_SHARES),
+                                displayDate(expirationDate),
                                 <Button
                                     display="label"
                                     label="Agree"
@@ -459,7 +622,7 @@ function App() {
                 primary="AssetShare"
             />
             <Tabs
-                items={['Asset', 'Payments', 'Owners', 'Offers', 'Proposals']}
+                items={['Asset', 'Your Profile', 'Payments', 'Owners', 'Offers', 'Proposals']}
                 selected={selectedTab}
                 onChange={setSelectedTab}
             />
