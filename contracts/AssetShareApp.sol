@@ -6,7 +6,7 @@ contract AssetShareApp is AragonApp {
 
     // Events
     event PAYMENT_RECEIVED(address sender, uint amount, string info);
-    event TRESURY_DEPOSIT(address sender, uint amount, string info);
+    event TREASURY_DEPOSIT(address sender, uint amount, string info);
     event OWNERS_PAID();
     event NEW_OFFER(uint id);
     event COMPLETED_OFFER(uint id);
@@ -145,7 +145,7 @@ contract AssetShareApp is AragonApp {
     // a way to deposit money directly into the treasury
     function treasuryDeposit(string info) external payable {
         treasuryBalance += msg.value;
-        emit TRESURY_DEPOSIT(msg.sender, msg.value, info);
+        emit TREASURY_DEPOSIT(msg.sender, msg.value, info);
     }
 
     // returns the amount of funds in the treasury
