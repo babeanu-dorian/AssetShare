@@ -17,7 +17,7 @@ async (state, {event}) => {
                         treasuryBalance: await getTreasuryBalance(),
                         funds: await getFunds()
                     }
-                case 'TRESURY_DEPOSIT':
+                case 'TREASURY_DEPOSIT':
                     return {
                         ...nextState,
                         treasuryBalance: await getTreasuryBalance()
