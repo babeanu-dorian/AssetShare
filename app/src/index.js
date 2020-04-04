@@ -10,10 +10,11 @@ const reducer = state => {
             treasuryBalance: 0,
             funds: 0,
             owners: [],
-            sell_offers: [],
-            buy_offers: [],
-            isSyncing: true,
-            flag: 0
+            offers: {
+              sellOffers: [],
+              buyOffers: []
+            },
+            isSyncing: true
         }
     }
     return state
