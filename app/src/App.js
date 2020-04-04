@@ -1,27 +1,22 @@
 import React, {useState} from 'react'
 import {useAragonApi} from '@aragon/api-react'
 import {
-    AddressField,
     Box,
     Button,
+    Checkbox,
     DataView,
-    DateRangePicker,
     DropDown,
     GU,
     Header,
-    IconMinus,
-    IconPlus,
     IdentityBadge,
     Main,
     SyncIndicator,
     Tabs,
-    Text,
     TextInput,
-    textStyle,
-    ContextMenu,
-    ContextMenuItem
+    textStyle
 } from '@aragon/ui'
 import styled from 'styled-components'
+
 
 function App() {
     const {api, appState, path} = useAragonApi();
@@ -47,7 +42,10 @@ function App() {
     const [message, setMessage] = useState('');
     const [shares, setShares] = useState('');
     const [price, setPrice] = useState('');
-    const [intendedBuyer, setIntendedBuyer] = useState('');
+    const [intendedParty, setIntendedParty] = useState('');
+    const [autocompleteCheck, setAutocompleteCheck] = useState(true);
+    const [selectedOfferTab, setSelectedOfferTab] = useState(0);
+    const [partialShares, setPartialShares] = useState({});
     const [selectedProposalFunction, setSelectedProposalFunction] = useState(0);
     const [newApprovalThreshold, setNewApprovalThreshold] = useState('');
     const [newAssetDescription, setNewAssetDescription] = useState('');
@@ -62,6 +60,15 @@ function App() {
     const [proposalReason, setProposalReason] = useState('');
     const [endDate, setEndDate] = useState('' + dateToUnixTimestamp(new Date()));
     const anyAddress = '0x0000000000000000000000000000000000000000';
+    const weiInEth = 1000000000000000000.0;
+
+    function weiToEth(amount) {
+        return amount / weiInEth;
+    }
+
+    function ethToWei(amount) {
+        return amount * weiInEth;
+    }
 
     function percentageToAmount(percentage, total) {
         return percentage * total / 100;
@@ -69,6 +76,14 @@ function App() {
 
     function amountToPercentage(amount, total) {
         return amount * 100 / total;
+    }
+
+    function ethPerPercentageToWeiPerShare(amount) {
+        return ethToWei(amount) * 100 / TOTAL_SHARES;
+    }
+
+    function calcPartialPrice(percentageShares, pricePerShare) {
+        return pricePerShare * percentageToShares(percentageShares);
     }
 
     function displayAddress(address) {
@@ -137,6 +152,100 @@ function App() {
                        + '.';
         }
         return '';
+    }
+
+    function sellShares(sellOffer, autocompleteOn, buyIdx = 0) {
+
+        if (autocompleteOn && buyIdx != offers.buyOffers.length) {
+            const buyOffer = offers.buyOffers[buyIdx];
+
+            // if there are no compatible buying offers, skip to the end (list is sorted by price)
+            if (parseInt(buyOffer.price) < parseInt(sellOffer.price))
+                return sellShares(sellOffer, autocompleteOn, offers.buyOffers.length);
+
+            // prevent user from trading with him/herself
+            if (sellOffer.seller == buyOffer.buyer)
+                return sellShares(sellOffer, autocompleteOn, buyIdx + 1);
+
+            // skip offers where buyer is not the intended buyer
+            if (sellOffer.buyer != anyAddress && sellOffer.buyer != buyOffer.buyer)
+                return sellShares(sellOffer, autocompleteOn, buyIdx + 1);
+
+             // skip offers where seller is not the intended seller
+            if (buyOffer.seller != anyAddress && buyOffer.seller != sellOffer.seller)
+                return sellShares(sellOffer, autocompleteOn, buyIdx + 1);
+
+            if (sellOffer.id == null) { // no existing sell offer, just complete buy offers
+                const sharesToSell = (parseInt(sellOffer.shares) >= parseInt(buyOffer.shares) ? buyOffer.shares : sellOffer.shares);
+                api.sellShares(buyOffer.id, sharesToSell).subscribe(
+                    txHash => {
+                        sellOffer.shares -= sharesToSell;
+                        sellShares(sellOffer, autocompleteOn, buyIdx + 1);
+                    },
+                    err => console.log(err)
+                );
+            } else { // existing sell offer, combine offers
+                api.combineOffers(sellOffer.id, buyOffer.id).subscribe(
+                    txHash => {
+                        sellOffer.shares -= (parseInt(sellOffer.shares) >= parseInt(buyOffer.shares) ? buyOffer.shares : sellOffer.shares);
+                        sellShares(sellOffer, autocompleteOn, buyIdx + 1);
+                    },
+                    err => console.log(err)
+                );
+            }
+        } else {
+            if (sellOffer.id == null && sellOffer.shares != 0) {
+                // some shares remained unsold, publish sell offer
+                api.offerToSell(sellOffer.shares, sellOffer.price, sellOffer.buyer).toPromise();
+            }
+        }
+    }
+
+    function buyShares(buyOffer, autocompleteOn, sellIdx = 0) {
+
+        if (autocompleteOn && sellIdx != offers.sellOffers.length) {
+            const sellOffer = offers.sellOffers[sellIdx];
+
+            // if there are no compatible selling offers, skip to the end (list is sorted by price)
+            if (parseInt(buyOffer.price) < parseInt(sellOffer.price))
+                return buyShares(buyOffer, autocompleteOn, offers.sellOffers.length);
+
+            // prevent user from trading with him/herself
+            if (buyOffer.buyer == sellOffer.seller)
+                return buyShares(buyOffer, autocompleteOn, sellIdx + 1);
+
+             // skip offers where seller is not the intended seller
+            if (buyOffer.seller != anyAddress && buyOffer.seller != sellOffer.seller)
+                return buyShares(buyOffer, autocompleteOn, sellIdx + 1);
+
+            // skip offers where buyer is not the intended buyer
+            if (sellOffer.buyer != anyAddress && sellOffer.buyer != buyOffer.buyer)
+                return buyShares(buyOffer, autocompleteOn, sellIdx + 1);
+
+            if (buyOffer.id == null) { // no existing buy offer, just complete sell offers
+                const sharesToBuy = (parseInt(buyOffer.shares) >= parseInt(sellOffer.shares) ? sellOffer.shares : buyOffer.shares);
+                api.buyShares(sellOffer.id, sharesToBuy, {'value': sharesToBuy * sellOffer.price}).subscribe(
+                    txHash => {
+                        buyOffer.shares -= sharesToBuy;
+                        buyShares(buyOffer, autocompleteOn, sellIdx + 1);
+                    },
+                    err => console.log(err)
+                );
+            } else { // existing buy offer, combine offers
+                api.combineOffers(sellOffer.id, buyOffer.id).subscribe(
+                    txHash => {
+                        buyOffer.shares -= (parseInt(buyOffer.shares) >= parseInt(sellOffer.shares) ? sellOffer.shares : buyOffer.shares);
+                        buyShares(buyOffer, autocompleteOn, sellIdx + 1);
+                    },
+                    err => console.log(err)
+                );
+            }
+        } else {
+            if (buyOffer.id == null && buyOffer.shares != 0) {
+                // some shares remained unsold, publish sell offer
+                api.offerToBuy(buyOffer.shares, buyOffer.price, buyOffer.seller, {'value': buyOffer.shares * buyOffer.price}).toPromise();
+            }
+        }
     }
 
     let selectedView;
@@ -269,52 +378,161 @@ function App() {
             );
             break;
         case 4: //Offers
+
+            let activeOffersView;
+
+            switch (selectedOfferTab) {
+                case 0: // sell offers
+                    activeOffersView = (
+                        <DataView
+                            display="table"
+                            fields={['Id', 'Seller', 'Intended Buyer','Shares (%)', 'Price (eth)', 'Shares to buy (%)', 'Buy', 'Autocomplete', 'Cancel']}
+                            entries={offers.sellOffers}
+                            renderEntry={({id, seller, buyer, shares, price}) => {
+
+                                if (partialShares[id] == null)
+                                    partialShares[id] = 1;
+
+                                return [
+                                    id,
+                                    displayAddress(seller),
+                                    displayAddress(buyer),
+                                    sharesToPercentage(shares),
+                                    weiToEth(calcPartialPrice(partialShares[id], price)),
+                                    <TextInput.Number
+                                        value={partialShares[id]}
+                                        onChange={event => setPartialShares({...partialShares, [id] : parseFloat(event.target.value)})}
+                                    />,
+                                    <Button
+                                        display="label"
+                                        label="Buy"
+                                        onClick={() => api.buyShares(id, percentageToShares(partialShares[id]), {'value': calcPartialPrice(partialShares[id], price)}).toPromise()}
+                                    />,
+                                    <Button
+                                        display="label"
+                                        label="Autocomplete"
+                                        onClick={() => {
+                                            if (currentUser != seller) {
+                                                console.log('Error: Only the offer owner can autocomplete it.');
+                                                return;
+                                            }
+                                            sellShares({id, seller, buyer, price, shares}, true);
+                                        }}
+                                    />,
+                                    <Button
+                                        display="label"
+                                        label="Cancel"
+                                        onClick={() => api.cancelOffer(id).toPromise()}
+                                    />
+                                ]
+                            }}
+                        />
+                    );
+                    break;
+                case 1: // buy offers
+                    activeOffersView = (
+                        <DataView
+                            display="table"
+                            fields={['Id', 'Buyer', 'Intended Seller','Shares (%)', 'Offer (eth)', 'Shares to sell (%)', 'Sell', 'Autocomplete', 'Cancel']}
+                            entries={offers.buyOffers}
+                            renderEntry={({id, seller, buyer, shares, price}) => {
+
+                                if (partialShares[id] == null)
+                                    partialShares[id] = 1;
+
+                                return [
+                                    id,
+                                    displayAddress(buyer),
+                                    displayAddress(seller),
+                                    sharesToPercentage(shares),
+                                    weiToEth(calcPartialPrice(partialShares[id], price)),
+                                    <TextInput.Number
+                                        value={partialShares[id]}
+                                        onChange={event => setPartialShares({...partialShares, [id] : parseFloat(event.target.value)})}
+                                    />,
+                                    <Button
+                                        display="label"
+                                        label="Sell"
+                                        onClick={() => api.sellShares(id, percentageToShares(partialShares[id])).toPromise()}
+                                    />,
+                                    <Button
+                                        display="label"
+                                        label="Autocomplete"
+                                        onClick={() => {
+                                            if (currentUser != buyer) {
+                                                console.log('Error: Only the offer owner can autocomplete it.');
+                                                return;
+                                            }
+                                            buyShares({id, seller, buyer, price, shares}, true);
+                                        }}
+                                    />,
+                                    <Button
+                                        display="label"
+                                        label="Cancel"
+                                        onClick={() => api.cancelOffer(id).toPromise()}
+                                    />
+                                ]
+                            }}
+                        />
+                    );
+            }
+
             selectedView = (
                 <Box>
-                    Shares to sell (%): <TextInput.Number
+                    Shares (%): <TextInput.Number
                         value={shares}
                         onChange={event => setShares(event.target.value)}
                     /> <br/>
-                    Price (wei): <TextInput.Number
+                    Price (eth / %): <TextInput.Number
                         value={price}
                         onChange={event => setPrice(event.target.value)}
                     /> <br/>
-                    Intended buyer: <TextInput
-                        value={intendedBuyer}
-                        onChange={event => setIntendedBuyer(event.target.value)}
+                    Intended buyer / seller: <TextInput
+                        value={intendedParty}
+                        onChange={event => setIntendedParty(event.target.value)}
                     /> <br/>
+                    <Checkbox
+                        checked={autocompleteCheck}
+                        onChange={setAutocompleteCheck}
+                    /> Autocomplete <br/>
                     <Buttons>
                         <Button
                             display="label"
-                            label="Publish Offer"
-                            onClick={() => api.offerToSell(percentageToAmount(parseFloat(shares, 10), TOTAL_SHARES),
-                                parseInt(price, 10), (intendedBuyer ? intendedBuyer : anyAddress)).toPromise()}
+                            label="Offer to sell"
+                            onClick={() => sellShares({
+                                    id: null,
+                                    seller: currentUser,
+                                    buyer: (intendedParty ? intendedParty : anyAddress),
+                                    shares: percentageToShares(parseFloat(shares)),
+                                    price: ethPerPercentageToWeiPerShare(price)
+                                }, autocompleteCheck)
+                            }
+                        />
+                        <Button
+                            display="label"
+                            label="Offer to buy"
+                            onClick={() => buyShares({
+                                    id: null,
+                                    seller: (intendedParty ? intendedParty : anyAddress),
+                                    buyer: currentUser,
+                                    shares: percentageToShares(parseFloat(shares)),
+                                    price: ethPerPercentageToWeiPerShare(price)
+                                }, autocompleteCheck)
+                            }
                         />
                     </Buttons>
-                    <DataView
-                        display="table"
-                        fields={['Id', 'Seller', 'Inteded Buyer', 'Shares (%)', 'Price (wei)', 'Buy', 'Cancel']}
-                        entries={offers}
-                        renderEntry={({id, seller, buyer, shares, price}) => {
-                            return [
-                                id,
-                                displayAddress(seller),
-                                displayAddress(buyer),
-                                amountToPercentage(shares, TOTAL_SHARES),
-                                price,
-                                <Button
-                                    display="label"
-                                    label="Buy"
-                                    onClick={() => api.buyShares(id, {'value': price}).toPromise()}
-                                />,
-                                <Button
-                                    display="label"
-                                    label="Cancel"
-                                    onClick={() => api.cancelOffer(id).toPromise()}
-                                />
-                            ]
-                        }}
+                    <Tabs
+                        items={['Sell-Offers', 'Buy-Offers']}
+                        selected={selectedOfferTab}
+                        onChange={setSelectedOfferTab}
                     />
+                    {activeOffersView}
+                </Box>
+            )
+            break;
+        case 3: //Proposals
+            selectedView = (
+                <Box>
                 </Box>
             );
             break;
@@ -630,6 +848,7 @@ function App() {
         </Main>
     )
 }
+
 
 const Buttons = styled.div`
   display: grid;
