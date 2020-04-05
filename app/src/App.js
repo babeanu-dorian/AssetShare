@@ -16,8 +16,9 @@ import {
     textStyle
 } from '@aragon/ui'
 import styled from 'styled-components'
+import assetJsonInterface from './SharedAssetInterface'
 
-
+/*
 function App() {
     const {api, appState, path} = useAragonApi();
     const {
@@ -848,7 +849,118 @@ function App() {
         </Main>
     )
 }
+*/
 
+function App() {
+    const {api, appState, path} = useAragonApi();
+    const {sharedAssets, assetDescription, treasuryBalance, funds, isSyncing} = appState;
+    const [selectedTab, setSelectedTab] = useState(0);
+    const [description, setDescription] = useState('');
+    const [selectedAsset, setSelectedAsset] = useState(null);
+    const [assetEventSubscription, setAssetEventSubscription] = useState(null);
+    const [amount, setAmount] = useState('');
+    const [message, setMessage] = useState('');
+
+    let selectedView;
+
+    switch (selectedTab) {
+        case 0: //Asset Registry
+            selectedView = (
+                <Box>
+                    Asset description: <TextInput
+                        value={description}
+                        onChange={event => setDescription(event.target.value)}
+                    /> <br/>
+                    <Button
+                        display="label"
+                        label="Publish"
+                        onClick={() => api.createAsset(description).toPromise()}
+                    />
+                    <DataView
+                        display="table"
+                        fields={['Address', 'Select']}
+                        entries={sharedAssets}
+                        renderEntry={(address) => {
+                            return [
+                                address,
+                                <Button
+                                    display="label"
+                                    label="Select"
+                                    onClick={() => {
+                                        if (assetEventSubscription != null) {
+                                            assetEventSubscription.unsubscribe();
+                                        }
+
+                                        const asset = api.external(address, assetJsonInterface);
+
+                                        api.emitTrigger('ASSET_SELECTED', {address});
+                                        setSelectedAsset(asset);
+                                        setAssetEventSubscription(asset.events().subscribe(({event, returnValues, address}) => {
+                                            api.emitTrigger(event, { ...returnValues, contractAddress: address });
+                                        }));
+                                    }}
+                                />
+                            ]
+                        }}
+                    />
+                </Box>
+            );
+            break;
+        case 1: //Asset Description
+            selectedView = (
+                <Box>{assetDescription}</Box>
+            );
+            break;
+        case 2: //Payments
+            selectedView = (
+                <Box>
+                    TreasuryBalance: {treasuryBalance} <br/>
+                    Funds: {funds} <br/>
+
+                    Amount (wei): <TextInput.Number
+                        value={amount}
+                        onChange={event => setAmount(event.target.value)}
+                    /> <br/>
+                    Message: <TextInput
+                        value={message}
+                        onChange={event => setMessage(event.target.value)}
+                    /> <br/>
+                    <Buttons>
+                        <Button
+                            display="label"
+                            label="Make payment"
+                            onClick={() => selectedAsset.payment(message, {'value': parseInt(amount, 10)}).toPromise()}
+                        />
+                        <Button
+                            display="label"
+                            label="Deposit to treasury"
+                            onClick={() => selectedAsset.treasuryDeposit(message, {'value': parseInt(amount, 10)}).toPromise()}
+                        />
+                        <Button
+                            display="label"
+                            label="Distribute revenue"
+                            onClick={() => selectedAsset.payOwners().toPromise()}
+                        />
+                    </Buttons>
+                </Box>
+            );
+    }
+
+    return (
+        <Main>
+            {isSyncing && <SyncIndicator/>}
+            <Header
+                primary="AssetShare"
+            />
+            <Tabs
+                items={['Asset Registry', 'Asset Description', 'Payments']}
+                selected={selectedTab}
+                onChange={setSelectedTab}
+            />
+            {selectedView}
+        </Main>
+    )
+}
 
 const Buttons = styled.div`
   display: grid;

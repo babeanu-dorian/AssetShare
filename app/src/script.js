@@ -1,9 +1,10 @@
 import 'core-js/stable'
 import 'regenerator-runtime/runtime'
 import Aragon, {events} from '@aragon/api'
+import assetJsonInterface from './SharedAssetInterface'
 
 const app = new Aragon()
-
+/*
 app.store(
     async (state, event) => {
         const nextState = {
@@ -80,6 +81,97 @@ app.store(
         init: initializeState(),
     }
 )
+*/
+
+var selectedAsset = null;
+
+app.store(
+    async (state, event) => {
+        const nextState = {
+            ...state,
+        }
+        try {
+            console.log(event);
+            switch (event.event) {
+                case 'NEW_ASSET':
+                    return {
+                        ...nextState,
+                        sharedAssets: await getSharedAssets()
+                    }
+                case 'ASSET_SELECTED':
+                    selectedAsset = app.external(event.returnValues.address, assetJsonInterface);
+                    return {
+                        ...nextState,
+                        assetDescription: await getAssetDescription(),
+                        treasuryBalance: await getTreasuryBalance(),
+                        funds: await getFunds()
+                    }
+                case 'PAYMENT_RECEIVED':
+                    return {
+                        ...nextState,
+                        treasuryBalance: await getTreasuryBalance(),
+                        funds: await getFunds()
+                    }
+                case 'TREASURY_DEPOSIT':
+                    return {
+                        ...nextState,
+                        treasuryBalance: await getTreasuryBalance()
+                    }
+                case 'OWNERS_PAID':
+                    return {
+                        ...nextState,
+                        funds: await getFunds()
+                    }
+                case events.SYNC_STATUS_SYNCING:
+                    return {...nextState, isSyncing: true}
+                case events.SYNC_STATUS_SYNCED:
+                    return {...nextState, isSyncing: false}
+                default:
+                    return state
+            }
+        } catch (err) {
+            console.log(err)
+        }
+    },
+    {
+        init: initializeState(),
+    }
+)
+
+function initializeState() {
+    return async cachedState => {
+        return {
+            ...cachedState,
+            sharedAssets: await getSharedAssets(),
+            assetDescription: '',
+            treasuryBalance: 0,
+            funds: 0
+        }
+    }
+}
+
+async function getSharedAssets() {
+    let assetCount = parseInt(await app.call('getAssetCount').toPromise(), 10);
+    let sharedAssets = [];
+    for (let i = 0; i != assetCount; ++i) {
+        sharedAssets.push(await app.call('getAssetByIdx', i).toPromise());
+    }
+    return sharedAssets;
+}
+
+async function getAssetDescription() {
+    let tmp = await selectedAsset.getAssetDescription().toPromise();
+    console.log(tmp);
+    return tmp;
+}
+
+async function getTreasuryBalance() {
+    return parseInt(await selectedAsset.getTreasuryBalance().toPromise(), 10);
+}
+
+async function getFunds() {
+    return parseInt(await selectedAsset.getFunds().toPromise(), 10);
+}
 
 /***********************
  *                     *
@@ -87,6 +179,7 @@ app.store(
  *                     *
  ***********************/
 
+/*
 function initializeState() {
     return async cachedState => {
         return {
@@ -122,10 +215,6 @@ async function getTaskFunctionValues() {
     return await app.call('getTaskFunctionValues').toPromise();
 }
 
-async function getAssetDescription() {
-    return await app.call('getAssetDescription').toPromise();
-}
-
 async function getTreasuryRatio() {
     return await app.call('getTreasuryRatio').toPromise();
 }
@@ -136,14 +225,6 @@ async function getPayoutPeriod() {
 
 async function getProposalApprovalThreshold() {
     return await app.call('getProposalApprovalThreshold').toPromise();
-}
-
-async function getTreasuryBalance() {
-    return parseInt(await app.call('getTreasuryBalance').toPromise(), 10);
-}
-
-async function getFunds() {
-    return parseInt(await app.call('getFunds').toPromise(), 10);
 }
 
 async function getOwners() {
@@ -207,3 +288,4 @@ async function getSupportedProposals(owner) {
     }
     return proposals;
 }
+*/
