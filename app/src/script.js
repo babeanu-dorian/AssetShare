@@ -122,6 +122,14 @@ app.store(
                         ...nextState,
                         funds: await getFunds()
                     }
+                case 'NEW_OFFER':
+                case 'SHARES_TRANSFERED':
+                case 'CANCELLED_OFFER':
+                    return {
+                        ...nextState,
+                        owners: await getOwners(),
+                        offers: await getActiveOffers()
+                    }
                 case events.SYNC_STATUS_SYNCING:
                     return {...nextState, isSyncing: true}
                 case events.SYNC_STATUS_SYNCED:
@@ -137,6 +145,12 @@ app.store(
         init: initializeState(),
     }
 )
+
+/***********************
+ *                     *
+ *   Event Handlers    *
+ *                     *
+ ***********************/
 
 function initializeState() {
     return async cachedState => {
@@ -173,11 +187,46 @@ async function getFunds() {
     return parseInt(await selectedAsset.getFunds().toPromise(), 10);
 }
 
-/***********************
- *                     *
- *   Event Handlers    *
- *                     *
- ***********************/
+async function getOwners() {
+    let ownersCount = parseInt(await selectedAsset.call('getOwnersCount').toPromise(), 10);
+    let owners = [];
+    for (let i = 0; i != ownersCount; ++i) {
+        let address = await selectedAsset.call('getOwnerAddressByIndex', i).toPromise();
+        owners.push({
+            'address': address,
+            'shares': parseInt(await selectedAsset.call('getSharesByAddress', address).toPromise(), 10),
+            'sharesOnSale': parseInt(await selectedAsset.call('getSharesOnSaleByAddress', address).toPromise(), 10)
+        });
+    }
+    return owners;
+}
+
+async function getActiveOffers() {
+    let offersCount = parseInt(await selectedAsset.call('getActiveOffersCount').toPromise(), 10);
+    let offers = {
+        sellOffers: [],
+        buyOffers: []
+    };
+    for (let i = 0; i != offersCount; ++i) {
+        let offer = await selectedAsset.call('getActiveOfferByIndex', i).toPromise();
+        if (offer.offerType == 'SELL') {
+            offers.sellOffers.push(offer);
+        } else {
+            offers.buyOffers.push(offer);
+        }
+    }
+
+    // sort sell offers in increasing price order
+    offers.sellOffers.sort((a, b) => parseInt(a.price) - parseInt(b.price));
+
+    // sort buy offers in decreasing price order
+    offers.buyOffers.sort((a, b) => parseInt(b.price) - parseInt(a.price));
+
+    return offers;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /*
 function initializeState() {
