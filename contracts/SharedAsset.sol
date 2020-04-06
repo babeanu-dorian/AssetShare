@@ -15,11 +15,20 @@ contract SharedAsset {
     event REMOVED_SUPPORTED_PROPOSAL(uint idx);
     event VOTE(address voter, uint propId, bool vote);
 
+    struct DataPoint {
+        uint data;
+        uint timestamp;
+    }
+
     struct Owner {                  // used to store shareholder information
         uint shares;                // amount of shares owned by shareholder
         uint sharesOnSale;          // amount of the owner's shares currently on sale
         uint listPosition;          // position in the ownerList
         uint[] supportedProposals;  // list of ids of proposals currently supported
+        uint lastKnownPayout;
+        uint pendingPayout;
+        mapping(uint => DataPoint) sharesHistory;
+        uint sharesHistorySize;
     }
 
     enum OfferType {
@@ -43,7 +52,6 @@ contract SharedAsset {
     enum TaskFunction {                  // describes specific functions that can be used with tasks
         CHANGE_APPROVAL_TRESHOLD,        // edit the value of proposalApprovalThreshold
         CHANGE_ASSET_DESCRIPTION,        // edit the value of assetDescription
-        CHANGE_PAYOUT_PERIOD,            // edit the value of payoutPeriod
         CHANGE_TREASURY_RATIO,           // edit the value of treasuryRatio
         EXECUTE_EXTERNAL_CONTRACT,       // execute a function on an external contract (may use treasury funds)
         ORIGINAL,                        // free format proposal
@@ -81,7 +89,6 @@ contract SharedAsset {
 
     uint constant private DEFAULT_TREASURY_RATIO                 // default value of treasuryRatio
                                       = TREASURY_RATIO_DENOMINATOR / 10;
-    uint constant private DEFAULT_PAYOUT_PERIOD = 60;            // default value of payoutPeriod
     uint constant private DEFAULT_APPROVAL_TRESHOLD              // default value of proposalApprovalThreshold
                                       = TOTAL_SHARES / 2 + 1;
 
@@ -93,10 +100,8 @@ contract SharedAsset {
     uint private treasuryBalance;               // wei in the treasury
     uint private treasuryRatio;                 // the ratio of ether placed in the treasury
                                                 //     = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
-    uint private funds;                         // amount to be split between owners (in wei)
-    uint private payoutPeriod;                  // time interval between shareholder payout (in seconds)
-    uint private lastPayday;                    // unix timestamp of last theoretical* payout
-                                                //     *Time when the payout should have happened
+    uint private totalPayout;
+    DataPoint[] payoutHistory;
 
     Offer[] private offerList;                  // list of all offers
     uint[] private activeOffersList;            // list of indexes of active offers
@@ -117,9 +122,6 @@ contract SharedAsset {
         // set default values
         treasuryBalance = 0;
         treasuryRatio = DEFAULT_TREASURY_RATIO;
-        funds = 0;
-        payoutPeriod = DEFAULT_PAYOUT_PERIOD;
-        lastPayday = block.timestamp;
         proposalApprovalThreshold = DEFAULT_APPROVAL_TRESHOLD;
     }
 
@@ -167,6 +169,10 @@ contract SharedAsset {
         if (owner.shares == 0) {
             addOwner(ownerAddress, amount);
         } else {
+            owner.sharesHistory[owner.sharesHistorySize] = DataPoint(owner.shares, block.timestamp);
+            ++owner.sharesHistorySize;
+            owner.pendingPayout += (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES;
+            owner.lastKnownPayout = totalPayout;
             owner.shares += amount;
         }
     }
@@ -176,10 +182,11 @@ contract SharedAsset {
     // proposal support is adjusted based on new amount of shares
     function decreaseShares(address ownerAddress, uint amount) private {
         Owner storage owner = ownershipMap[ownerAddress];
+        owner.sharesHistory[owner.sharesHistorySize] = DataPoint(owner.shares, block.timestamp);
+        ++owner.sharesHistorySize;
+        owner.pendingPayout += (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES;
+        owner.lastKnownPayout = totalPayout;
         owner.shares -= amount;
-        if (owner.shares == 0) {
-            removeOwner(ownerAddress);
-        }
     }
 
     // transfers shares from one account to another
@@ -194,7 +201,10 @@ contract SharedAsset {
             shares: shares,
             sharesOnSale: 0,
             listPosition: ownerList.length,
-            supportedProposals: new uint[](0)
+            supportedProposals: new uint[](0),
+            lastKnownPayout : totalPayout,
+            pendingPayout : 0,
+            sharesHistorySize : 0
         });
         ownerList.push(ownerAddress);
     }
@@ -207,41 +217,68 @@ contract SharedAsset {
         --ownerList.length;
     }
 
+    
+
     //*****************************PAYMENTS****************************************************
 
     // the ether produced by the asset(s) is sent by calling this function
     function payment(string info) external payable {
-        uint amountForTreasury = (msg.value * treasuryRatio) / TREASURY_RATIO_DENOMINATOR;
-        funds = msg.value - amountForTreasury;
-        treasuryBalance += amountForTreasury;
+        require(treasuryRatio <= TREASURY_RATIO_DENOMINATOR, "Payments are not allowed to invalid contracts.");
+        uint treasuryIncrease = (msg.value * treasuryRatio) / TREASURY_RATIO_DENOMINATOR;
+        uint payout = msg.value - treasuryIncrease;
+        payoutHistory.push(DataPoint(payout, block.timestamp));
+        totalPayout += payout;
+        treasuryBalance += treasuryIncrease;
         emit PAYMENT_RECEIVED(msg.sender, msg.value, info);
-    }
-
-    // checks if at least one payout period has passed, and if it did,
-    // it divides the contract balance between the shareholders
-    function payOwners() external {
-        uint timeElapsed = block.timestamp - lastPayday;
-        require(timeElapsed >= payoutPeriod, "There is still time until the next payday.");
-        // account for multiple payout periods
-        lastPayday = block.timestamp - (timeElapsed % payoutPeriod);
-        divideAndTransferFunds();
-        emit OWNERS_PAID();
-    }
-
-    // divides the contract balance between the treasury and the shareholders
-    function divideAndTransferFunds() private {
-        uint amount;
-        for (uint i = 0; i != ownerList.length; ++i) {
-            amount = (funds * ownershipMap[ownerList[i]].shares) / TOTAL_SHARES;
-            require(ownerList[i].send(amount), "Funds could not be forwarded. Transaction denied.");
-            funds -= amount; // contract will leak money if you just set funds to 0
-        }
     }
 
     // a way to deposit money directly into the treasury
     function treasuryDeposit(string info) external payable {
         treasuryBalance += msg.value;
         emit TREASURY_DEPOSIT(msg.sender, msg.value, info);
+    }
+
+    // Returns the pending payout for the calling address
+    function getPendingPayout ( ) external view returns (uint) {
+        Owner storage owner = ownershipMap[msg.sender];
+        return owner.pendingPayout + (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES;
+    }
+
+    // Updates the pending payout for the given address
+    function updatePendingPayout ( address addr ) external payable {
+        Owner storage owner = ownershipMap[addr];
+        owner.pendingPayout += (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES;
+        owner.lastKnownPayout = totalPayout;
+    }
+
+    // Sends the pending payout to the calling address
+    function withdrawPayout ( ) external payable {
+        Owner storage owner = ownershipMap[msg.sender];
+        msg.sender.transfer(owner.pendingPayout + (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES);
+        owner.pendingPayout = 0;
+        owner.lastKnownPayout = totalPayout;
+    }
+
+    function getPayoutHistoryLength ( ) external view returns (uint) {
+        return payoutHistory.length;
+    }
+
+    function getPayoutInformation ( uint id ) external view returns (uint amount, uint timestamp) {
+        DataPoint dataPoint = payoutHistory[id];
+        amount = dataPoint.data;
+        timestamp = dataPoint.timestamp;
+    }
+
+    function getSharesHistorySize ( ) external view returns (uint) {
+        Owner storage owner = ownershipMap[msg.sender];
+        return owner.sharesHistorySize;
+    }
+    
+    function getSharesHistoryInformation ( uint id ) external view returns (uint amount, uint timestamp) {
+        Owner storage owner = ownershipMap[msg.sender];
+        DataPoint dataPoint = owner.sharesHistory[id];
+        amount = dataPoint.data;
+        timestamp = dataPoint.timestamp;
     }
 
     // returns the amount of funds in the treasury
@@ -251,15 +288,6 @@ contract SharedAsset {
 
     function getTreasuryRatio() external view returns (uint) {
         return treasuryRatio;
-    }
-
-    // returns the amount of funds that will be split between shareholders upon the next payday
-    function getFunds() public view returns (uint) {
-        return funds;
-    }
-
-    function getPayoutPeriod() public view returns (uint) {
-        return payoutPeriod;
     }
 
     //*****************************OFFERS****************************************************
@@ -544,14 +572,12 @@ contract SharedAsset {
 
     function getTaskFunctionValues() external pure returns (TaskFunction CHANGE_APPROVAL_TRESHOLD,
                                                             TaskFunction CHANGE_ASSET_DESCRIPTION,
-                                                            TaskFunction CHANGE_PAYOUT_PERIOD,
                                                             TaskFunction CHANGE_TREASURY_RATIO,
                                                             TaskFunction EXECUTE_EXTERNAL_CONTRACT,
                                                             TaskFunction ORIGINAL,
                                                             TaskFunction SEND_MONEY) {
         CHANGE_APPROVAL_TRESHOLD = TaskFunction.CHANGE_APPROVAL_TRESHOLD;
         CHANGE_ASSET_DESCRIPTION = TaskFunction.CHANGE_ASSET_DESCRIPTION;
-        CHANGE_PAYOUT_PERIOD = TaskFunction.CHANGE_PAYOUT_PERIOD;
         CHANGE_TREASURY_RATIO = TaskFunction.CHANGE_TREASURY_RATIO;
         EXECUTE_EXTERNAL_CONTRACT = TaskFunction.EXECUTE_EXTERNAL_CONTRACT;
         ORIGINAL = TaskFunction.ORIGINAL;
@@ -680,10 +706,6 @@ contract SharedAsset {
         } else if (functionId == TaskFunction.CHANGE_ASSET_DESCRIPTION) {
 
             assetDescription = proposal.task.stringArg;
-
-        } else if (functionId == TaskFunction.CHANGE_PAYOUT_PERIOD) {
-
-            payoutPeriod = proposal.task.uintArg;
 
         } else if (functionId == TaskFunction.CHANGE_TREASURY_RATIO) {
 
