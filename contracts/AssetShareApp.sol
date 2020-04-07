@@ -10,7 +10,7 @@ contract AssetShareApp is AragonApp {
     event OWNERS_PAID();
     event NEW_OFFER(uint id);
     event CANCELLED_OFFER(uint id);
-    event SHARES_TRANSFERED(address from, address to, uint sharesAmount, uint cost);
+    event SHARES_TRANSFERRED(address from, address to, uint sharesAmount, uint cost);
 
     struct Owner {                  // used to store shareholder information
         uint shares;                // amount of shares owned by shareholder
