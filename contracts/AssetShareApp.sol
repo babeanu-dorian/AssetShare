@@ -25,6 +25,7 @@ contract AssetShareApp is AragonApp {
     }
 
     function getAssetByIdx(uint idx) external view returns (address) {
+        require(idx < assetList.length);
         return assetList[idx];
     }
 

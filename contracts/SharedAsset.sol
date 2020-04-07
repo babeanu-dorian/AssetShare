@@ -148,7 +148,8 @@ contract SharedAsset {
     }
 
     function getSupportedProposalIdByIndex(address owner, uint idx) external view returns (uint) {
-        require(idx < ownershipMap[owner].supportedProposals.length, "Invalid supported proposal index.");
+        // idx must be a valid index in the list of supported proposals
+        require(idx < ownershipMap[owner].supportedProposals.length, "");
         return ownershipMap[owner].supportedProposals[idx];
     }
 
@@ -157,7 +158,8 @@ contract SharedAsset {
     }
 
     function getOwnerAddressByIndex(uint idx) external view returns (address) {
-        require(idx < ownerList.length, "Invalid owner index.");
+        // idx must be a valid index in the list of owners
+        require(idx < ownerList.length, "");
         return ownerList[idx];
     }
 
@@ -297,13 +299,14 @@ contract SharedAsset {
     // set the price to 0 for gift
     function offerToSell(uint sharesAmount, uint price, address intendedBuyer) external {
 
-        require(ownershipMap[msg.sender].supportedProposals.length == 0,
-            "You cannot sell shares while supporting proposals.");
+        // owners cannot sell shares while supporting proposals.
+        require(ownershipMap[msg.sender].supportedProposals.length == 0, "");
 
-        require(sharesAmount > 0, "0-shares auctions are not allowed.");
+        // 0-shares auctions are not allowed
+        require(sharesAmount > 0, "");
 
-        require(sharesAmount  + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares,
-            "Caller does not own this many shares.");
+        // the caller must own the amount of shares they offer to sell
+        require(sharesAmount  + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares, "");
 
         // create new active SELL offer
         uint id = offerList.length;
@@ -324,9 +327,11 @@ contract SharedAsset {
     // set the price to 0 to request gift
     function offerToBuy(uint sharesAmount, uint price, address intendedSeller) external payable {
 
-        require(sharesAmount > 0, "0-shares auctions are not allowed.");
+        // 0-shares auctions are not allowed
+        require(sharesAmount > 0, "");
 
-        require(msg.value == sharesAmount * price, "Caller must deposit the exact total cost of the transaction.");
+        // the caller must deposit the exact total sum of his offer
+        require(msg.value == sharesAmount * price, "");
 
         // create new active BUY offer
         uint id = offerList.length;
@@ -340,22 +345,29 @@ contract SharedAsset {
     // allows the caller to (partially) complete a SELL offer and performs the exchange of shares and ether
     // if any requirement fails, the transaction (including the transferred money) is reverted
     function buyShares(uint offerId, uint sharesAmount) external payable {
-        require(offerId < offerList.length, "Invalid offer id.");
+
+        // offer with given id must exist
+        require(offerId < offerList.length, "");
 
         Offer storage offer = offerList[offerId];
 
-        require(offer.offerType == OfferType.SELL, "Offer is not a sale.");
+        // the offer must have type SELL
+        require(offer.offerType == OfferType.SELL, "");
 
-        require(offer.listPosition != MISSING, "Offer is no longer active.");
+        // the offer must be active
+        require(offer.listPosition != MISSING, "");
 
-        require(offer.buyer == address(0) || offer.buyer == msg.sender, "Caller is not the intended buyer.");
+        // the caller must be the intended buyer, if one is set
+        require(offer.buyer == address(0) || offer.buyer == msg.sender, "");
 
-        require(offer.shares >= sharesAmount, "The offer contains less shares than requested.");
+        // the offer must contain the requested amount of shares
+        require(offer.shares >= sharesAmount, "");
 
-        require(msg.value == sharesAmount * offer.price, "Caller did not transfer the exact payment amount.");
+        // the caller must transfer the exact payment amount
+        require(msg.value == sharesAmount * offer.price, "");
 
         // attempt to transfer funds to seller, revert if it fails
-        require(offer.seller.send(msg.value), "Funds could not be forwarded. Transaction denied.");
+        require(offer.seller.send(msg.value), "");
 
         transferShares(offer.seller, msg.sender, sharesAmount);
 
@@ -371,25 +383,31 @@ contract SharedAsset {
     // allows the caller to (partially) complete a BUY offer and performs the exchange of shares and ether
     // if any requirement fails, the transaction (including the transferred money) is reverted
     function sellShares(uint offerId, uint sharesAmount) external {
-        require(offerId < offerList.length, "Invalid offer id.");
+
+        // offer with given id must exist
+        require(offerId < offerList.length, "");
 
         Offer storage offer = offerList[offerId];
 
-        require(offer.offerType == OfferType.BUY, "Offer is not a buy offer.");
+        // the offer must have type BUY
+        require(offer.offerType == OfferType.BUY, "");
 
-        require(offer.listPosition != MISSING, "Offer is no longer active.");
+        // the offer must be active
+        require(offer.listPosition != MISSING, "");
 
-        require(offer.seller == address(0) || offer.seller == msg.sender, "Caller is not the intended seller.");
+        // the caller must be the intended seller, if one is set
+        require(offer.seller == address(0) || offer.seller == msg.sender, "");
 
-        require(offer.shares >= sharesAmount, "The offer contains less shares than requested.");
+        // the offer must contain the requested amount of shares
+        require(offer.shares >= sharesAmount, "");
 
-        require(sharesAmount + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares,
-            "Caller does not own this many shares.");
+        // the caller must own the amount of shares they offer to sell
+        require(sharesAmount + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares, "");
 
         uint earnings = sharesAmount * offer.price;
 
         // attempt to transfer funds to seller, revert if it fails
-        require(msg.sender.send(earnings), "Funds could not be forwarded. Transaction denied.");
+        require(msg.sender.send(earnings), "");
 
         transferShares(msg.sender, offer.buyer, sharesAmount);
 
@@ -409,40 +427,44 @@ contract SharedAsset {
     //    - if the caller is the buyer, they pay what the seller asked for and keep the difference
     function combineOffers(uint sellOfferId, uint buyOfferId) external {
 
-        require(sellOfferId < offerList.length, "Invalid sell offer id.");
-        require(buyOfferId < offerList.length, "Invalid buy offer id.");
+        // offers with given ids must exist
+        require(sellOfferId < offerList.length, "");
+        require(buyOfferId < offerList.length, "");
 
         Offer storage sellOffer = offerList[sellOfferId];
         Offer storage buyOffer = offerList[buyOfferId];
 
-        require(sellOffer.offerType == OfferType.SELL, "Sell offer is not a sell offer.");
-        require(buyOffer.offerType == OfferType.BUY, "Buy offer is not a buy offer.");
+        // the offers must have the right types
+        require(sellOffer.offerType == OfferType.SELL, "");
+        require(buyOffer.offerType == OfferType.BUY, "");
 
-        require(sellOffer.listPosition != MISSING, "Sell offer is no longer active.");
-        require(buyOffer.listPosition != MISSING, "Buy offer is no longer active.");
+        // the offers must be active
+        require(sellOffer.listPosition != MISSING, "");
+        require(buyOffer.listPosition != MISSING, "");
 
-        require(sellOffer.buyer == address(0) || sellOffer.buyer == buyOffer.buyer, "Buyer is not the intended buyer.");
-        require(buyOffer.seller == address(0) || buyOffer.seller == sellOffer.seller, "Seller is not the intended seller.");
+        // the intended buyer / seller must be 0 or match the actual buyer / seller 
+        require(sellOffer.buyer == address(0) || sellOffer.buyer == buyOffer.buyer, "");
+        require(buyOffer.seller == address(0) || buyOffer.seller == sellOffer.seller, "");
 
-        require(sellOffer.price <= buyOffer.price,
-            "The amount of ether offered by the buyer must be equal or higher to the amount requested by the seller");
+        // the amount of ether offered by the buyer must be equal or higher to the amount requested by the seller
+        require(sellOffer.price <= buyOffer.price, "");
 
         uint sharesAmount = (sellOffer.shares < buyOffer.shares ? sellOffer.shares : buyOffer.shares);
         uint sellerRevenue;
 
+        // the caller gets the better deal basd on their role
         if (msg.sender == sellOffer.seller) {
             sellerRevenue = sharesAmount * buyOffer.price;
         } else if (msg.sender == buyOffer.buyer) {
             sellerRevenue = sharesAmount * sellOffer.price;
             // refund the buyer the difference
-            require(msg.sender.send(sharesAmount * (buyOffer.price - sellOffer.price)),
-                "Funds could not be forwarded. Transaction denied.");
+            require(msg.sender.send(sharesAmount * (buyOffer.price - sellOffer.price)), "");
         } else {
-            require(false, "Caller does not own either offer.");
+            require(false, ""); // the caller must be the owner of one of the offers
         }
 
         // pay seller
-        require(sellOffer.seller.send(sellerRevenue), "Funds could not be forwarded. Transaction denied.");
+        require(sellOffer.seller.send(sellerRevenue), "");
 
         transferShares(sellOffer.seller, buyOffer.buyer, sharesAmount);
 
@@ -467,22 +489,26 @@ contract SharedAsset {
 
     // deactivates an active auction owned by the caller
     function cancelOffer(uint offerId) external {
-        require(offerId < offerList.length, "Invalid offer id.");
+
+        // offer with id must exist
+        require(offerId < offerList.length, "");
 
         Offer storage offer = offerList[offerId];
         offer.completionDate = block.timestamp;
 
-        require(offer.listPosition != MISSING, "Offer is already inactive.");
+        // offer must be active
+        require(offer.listPosition != MISSING, "");
 
         if (offer.offerType == OfferType.SELL) {
-            require(msg.sender == offer.seller, "Caller does not own this offer.");
+            // only the owner of the offer can cancel it
+            require(msg.sender == offer.seller, "");
             ownershipMap[msg.sender].sharesOnSale -= offer.shares;
         } else { // OfferType.BUY
-            require(msg.sender == offer.buyer, "Caller does not own this offer.");
+            // only the owner of the offer can cancel it
+            require(msg.sender == offer.buyer, "");
 
             // refund buyer for shares not purchased
-            require(msg.sender.send(offer.shares * offer.price),
-                "Funds could not be forwarded. Transaction denied.");
+            require(msg.sender.send(offer.shares * offer.price), "");
         }
 
         offer.cancelled = true;
@@ -518,7 +544,7 @@ contract SharedAsset {
                                                                     uint creationDate,
                                                                     uint completionDate,
                                                                     bool cancelled) {
-        require(idx < activeOffersList.length, "Invalid active offer index.");
+        require(idx < activeOffersList.length, "");
         return getOffer(activeOffersList[idx]);
     }
 
@@ -531,7 +557,7 @@ contract SharedAsset {
                                                          uint creationDate,
                                                          uint completionDate,
                                                          bool cancelled) {
-        require(offerId < offerList.length, "Invalid offer id.");
+        require(offerId < offerList.length, "");
         Offer storage offer = offerList[offerId];
         id = offer.id;
         offerType = (offer.offerType == OfferType.SELL ? "SELL" : "BUY");
@@ -545,7 +571,7 @@ contract SharedAsset {
     }
 
     //*****************************PROPOSALS****************************************************
-/*
+
     function getProposalApprovalThreshold() external view returns (uint) {
         return proposalApprovalThreshold;
     }
@@ -563,9 +589,11 @@ contract SharedAsset {
 
     function removeInactiveSupportedProposalByIndex(uint idx) external {
         Owner storage owner = ownershipMap[msg.sender];
-        require(idx < owner.supportedProposals.length, "Invalid supported proposal index.");
-        require(!isActiveProposal(owner.supportedProposals[idx]),
-            "The proposal is still active, call revokeProposalSupport.");
+        // supported proposal with index must exist
+        require(idx < owner.supportedProposals.length, "");
+
+        // active supported proposals can only be removed by calling revokeProposalSupport
+        require(!isActiveProposal(owner.supportedProposals[idx]), "");
         removeSupportedProposalByIndex(idx);
         emit REMOVED_SUPPORTED_PROPOSAL(idx);
     }
@@ -588,13 +616,16 @@ contract SharedAsset {
     function makeProposal(string reason, uint expirationDate, uint functionId, uint uintArg,
                           string stringArg, address addressArg) external {
         
-        requireOwner("Only owners can make proposals.");
+        // only owners can make proposals
+        requireOwner("");
 
         Owner storage owner = ownershipMap[msg.sender];
 
-        require(owner.sharesOnSale == 0, "You cannot make proposals while selling shares.");
+        // owners cannot make proposals while selling shares
+        require(owner.sharesOnSale == 0, "");
 
-        require(expirationDate > block.timestamp, "Expiration date must be in the future.");
+        // expiration date must be in he future
+        require(expirationDate > block.timestamp, "");
         
         validateProposalArgs(TaskFunction(functionId), uintArg, stringArg, addressArg);
 
@@ -627,28 +658,33 @@ contract SharedAsset {
 
     function validateProposalArgs(TaskFunction functionId, uint uintArg, string stringArg, address addressArg) private pure {
 
-        require(functionId != TaskFunction.CHANGE_APPROVAL_TRESHOLD || uintArg < TOTAL_SHARES,
-                "Approval threshold cannot exceed 100%");
-        require(functionId != TaskFunction.CHANGE_TREASURY_RATIO || uintArg < TREASURY_RATIO_DENOMINATOR,
-                "Treasury ratio cannot exceed 100%");
+        // approval threshold cannot exceed 100%
+        require(functionId != TaskFunction.CHANGE_APPROVAL_TRESHOLD || uintArg < TOTAL_SHARES,"");
+        // treasury ratio cannot exceed 100%
+        require(functionId != TaskFunction.CHANGE_TREASURY_RATIO || uintArg < TREASURY_RATIO_DENOMINATOR, "");
     }
 
     // implements a 'yes' vote or updates the weight of a preexisting vote
     function supportProposal(uint id) external {
 
-        requireOwner("Only owners can vote.");
+        // only owners can vote
+        requireOwner("");
 
-        require(id < proposalList.length, "Invalid proposal id.");
+        // invalid proposal id
+        require(id < proposalList.length, "");
 
-        require(isActiveProposal(id), "The proposal is no longer active.");
+        // the proposal is no longer active
+        require(isActiveProposal(id), "");
 
         Owner storage owner = ownershipMap[msg.sender];
 
         Proposal storage proposal = proposalList[id];
 
-        require(owner.sharesOnSale == 0, "You cannot vote while selling shares.");
+        // owners cannot vote while selling shares
+        require(owner.sharesOnSale == 0, "");
 
-        require(owner.shares > proposal.supportMap[msg.sender], "Caller is already fully supporting this proposal.");
+        // the caller is already fully supporting this proposal
+        require(owner.shares > proposal.supportMap[msg.sender], "");
 
         if (proposal.supportMap[msg.sender] == 0) {
             // owner is not already supporting this proposal
@@ -670,13 +706,16 @@ contract SharedAsset {
         // check for owner not necessary
         // check for selling offers not necessary
 
-        require(id < proposalList.length, "Invalid proposal id.");
+        // proposal with id must exist
+        require(id < proposalList.length, "");
 
-        require(isActiveProposal(id), "The proposal is no longer active.");
+        // proposal must be active
+        require(isActiveProposal(id), "");
 
         Proposal storage proposal = proposalList[id];
 
-        require(proposal.supportMap[msg.sender] != 0, "Caller is not supporting this proposal.");
+        // the caller must be supporting the proposal
+        require(proposal.supportMap[msg.sender] != 0, "");
 
         proposal.support -= proposal.supportMap[msg.sender];
         proposal.supportMap[msg.sender] = 0;
@@ -687,13 +726,17 @@ contract SharedAsset {
     }
 
     function executeProposal(uint id) external {
-        require(id < proposalList.length, "Invalid proposal id.");
+
+        // proposal with id must exist
+        require(id < proposalList.length, "");
 
         Proposal storage proposal = proposalList[id];
 
-        require(isActiveProposal(id), "The proposal is no longer active.");
+        // proposal must be active
+        require(isActiveProposal(id), "");
 
-        require(proposal.support >= proposalApprovalThreshold, "The proposal does not have enough support.");
+        // the proposal support must reach the threshold to be approved
+        require(proposal.support >= proposalApprovalThreshold, "");
 
         // execute proposal task
 
@@ -713,22 +756,23 @@ contract SharedAsset {
 
         } else if (functionId == TaskFunction.EXECUTE_EXTERNAL_CONTRACT) {
 
-            require(proposal.task.uintArg <= treasuryBalance, "Insufficient treasury funds.");
+            // the treasury must contain the amount of money to be transfered
+            require(proposal.task.uintArg <= treasuryBalance, "");
             // attempt to call external function, revert if it fails
             require(
                 proposal.task.addressArg.call.value(proposal.task.uintArg)(
                     abi.encodeWithSignature(proposal.task.stringArg)
                 ),
-                "Something went wrong when calling external contract, transaction denied."
+                ""
             );
             treasuryBalance -= proposal.task.uintArg;
 
         } else if (functionId == TaskFunction.SEND_MONEY) {
 
-            require(proposal.task.uintArg <= treasuryBalance, "Insufficient treasury funds.");
+            // the treasury must contain the amount of money to be transfered
+            require(proposal.task.uintArg <= treasuryBalance, "");
             // attempt to transfer funds to seller, revert if it fails
-            require(proposal.task.addressArg.send(proposal.task.uintArg),
-                "Funds could not be sent, transaction denied.");
+            require(proposal.task.addressArg.send(proposal.task.uintArg), "");
             treasuryBalance -= proposal.task.uintArg;
         } // nothing to do for TaskFunction.ORIGINAL
 
@@ -739,10 +783,15 @@ contract SharedAsset {
 
     // deactivates an active proposal owned by the caller
     function cancelProposal(uint id) external {
-        require(id < proposalList.length, "Invalid proposal id.");
-        require(proposalList[id].listPosition != MISSING, "Proposal is already inactive.");
-        require(msg.sender == proposalList[id].owner || proposalList[id].expirationDate <= block.timestamp,
-            "Only the author of the proposal can cancel it before its expiration date.");
+
+        // proposal with id must exist
+        require(id < proposalList.length, "");
+
+        // proposal must be active
+        require(proposalList[id].listPosition != MISSING, "");
+
+        // only the author of the proposal can cancel it before its expiration date
+        require(msg.sender == proposalList[id].owner || proposalList[id].expirationDate <= block.timestamp, "");
 
         proposalList[id].cancelled = true;
         deactivateProposal(id);
@@ -781,7 +830,7 @@ contract SharedAsset {
                                                                        uint expirationDate,
                                                                        uint completionDate,
                                                                        bool cancelled) {
-        require(idx < activeProposalsList.length, "Invalid active proposal index.");
+        require(idx < activeProposalsList.length, "");
         return getProposal(activeProposalsList[idx]);
     }
 
@@ -797,7 +846,7 @@ contract SharedAsset {
                                                            uint expirationDate,
                                                            uint completionDate,
                                                            bool cancelled) {
-        require(propId < proposalList.length, "Invalid proposal id.");
+        require(propId < proposalList.length, "");
         Proposal storage proposal = proposalList[propId];
         id = proposal.id;
         owner = proposal.owner;
@@ -812,5 +861,6 @@ contract SharedAsset {
         completionDate = proposal.completionDate;
         cancelled = proposal.cancelled;
     }
-    */
+
 }
+

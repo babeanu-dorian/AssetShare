@@ -3,11 +3,11 @@ import ReactDOM from 'react-dom'
 import {AragonApi} from '@aragon/api-react'
 import App from './App'
 
-/*
 const reducer = state => {
 
     if (state === null) {
         return {
+            sharedAssets: [],
             TOTAL_SHARES: 0,
             TREASURY_RATIO_DENOMINATOR: 0,
             functionIds: {},
@@ -25,21 +25,6 @@ const reducer = state => {
             },
             proposals: [],
             supportedProposals: [],
-            isSyncing: true
-        }
-    }
-    return state
-}
-*/
-
-const reducer = state => {
-
-    if (state === null) {
-        return {
-            sharedAssets: [],
-            assetDescription: '',
-            treasuryBalance: 0,
-            funds: 0,
             isSyncing: true
         }
     }

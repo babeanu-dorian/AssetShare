@@ -4,7 +4,9 @@ import Aragon, {events} from '@aragon/api'
 import assetJsonInterface from './SharedAssetInterface'
 
 const app = new Aragon()
-/*
+
+var selectedAsset = null;
+
 app.store(
     async (state, event) => {
         const nextState = {
@@ -12,6 +14,29 @@ app.store(
         }
         try {
             switch (event.event) {
+                case 'NEW_ASSET':
+                    return {
+                        ...nextState,
+                        sharedAssets: await getSharedAssets()
+                    }
+                case 'ASSET_SELECTED':
+                    selectedAsset = app.external(event.returnValues.address, assetJsonInterface);
+                    return {
+                        ...nextState,
+                        TOTAL_SHARES: await getTotalShares(),
+                        TREASURY_RATIO_DENOMINATOR: await getTreasuryRatioDenominator(),
+                        functionIds: await getTaskFunctionValues(),
+                        assetDescription: await getAssetDescription(),
+                        treasuryRatio: await getTreasuryRatio(),
+                        payoutPeriod: await getPayoutPeriod(),
+                        proposalApprovalThreshold: await getProposalApprovalThreshold(),
+                        treasuryBalance: await getTreasuryBalance(),
+                        funds: await getFunds(),
+                        owners: await getOwners(),
+                        offers: await getActiveOffers(),
+                        proposals: await getActiveProposals(),
+                        supportedProposals: await getSupportedProposals(state.currentUser)
+                    }
                 case 'PAYMENT_RECEIVED':
                     return {
                         ...nextState,
@@ -81,71 +106,29 @@ app.store(
         init: initializeState(),
     }
 )
-*/
-
-var selectedAsset = null;
-
-app.store(
-    async (state, event) => {
-        const nextState = {
-            ...state,
-        }
-        try {
-            console.log(event);
-            switch (event.event) {
-                case 'NEW_ASSET':
-                    return {
-                        ...nextState,
-                        sharedAssets: await getSharedAssets()
-                    }
-                case 'ASSET_SELECTED':
-                    selectedAsset = app.external(event.returnValues.address, assetJsonInterface);
-                    return {
-                        ...nextState,
-                        assetDescription: await getAssetDescription(),
-                        treasuryBalance: await getTreasuryBalance(),
-                        funds: await getFunds()
-                    }
-                case 'PAYMENT_RECEIVED':
-                    return {
-                        ...nextState,
-                        treasuryBalance: await getTreasuryBalance(),
-                        funds: await getFunds()
-                    }
-                case 'TREASURY_DEPOSIT':
-                    return {
-                        ...nextState,
-                        treasuryBalance: await getTreasuryBalance()
-                    }
-                case 'OWNERS_PAID':
-                    return {
-                        ...nextState,
-                        funds: await getFunds()
-                    }
-                case events.SYNC_STATUS_SYNCING:
-                    return {...nextState, isSyncing: true}
-                case events.SYNC_STATUS_SYNCED:
-                    return {...nextState, isSyncing: false}
-                default:
-                    return state
-            }
-        } catch (err) {
-            console.log(err)
-        }
-    },
-    {
-        init: initializeState(),
-    }
-)
 
 function initializeState() {
     return async cachedState => {
         return {
             ...cachedState,
             sharedAssets: await getSharedAssets(),
+            TOTAL_SHARES: 0,
+            TREASURY_RATIO_DENOMINATOR: 0,
+            functionIds: {},
+            currentUser: '',
             assetDescription: '',
+            treasuryRatio: 0,
+            payoutPeriod: 0,
+            proposalApprovalThreshold: 0,
             treasuryBalance: 0,
-            funds: 0
+            funds: 0,
+            owners: [],
+            offers: {
+            sellOffers: [],
+            buyOffers: []
+            },
+            proposals: [],
+            supportedProposals: []
         }
     }
 }
@@ -160,9 +143,31 @@ async function getSharedAssets() {
 }
 
 async function getAssetDescription() {
-    let tmp = await selectedAsset.getAssetDescription().toPromise();
-    console.log(tmp);
-    return tmp;
+    return await selectedAsset.getAssetDescription().toPromise();
+}
+
+async function getTotalShares() {
+    return parseInt(await selectedAsset.TOTAL_SHARES().toPromise(), 10);
+}
+
+async function getTreasuryRatioDenominator() {
+    return parseInt(await selectedAsset.TREASURY_RATIO_DENOMINATOR().toPromise(), 10);
+}
+
+async function getTaskFunctionValues() {
+    return await selectedAsset.getTaskFunctionValues().toPromise();
+}
+
+async function getTreasuryRatio() {
+    return await selectedAsset.getTreasuryRatio().toPromise();
+}
+
+async function getPayoutPeriod() {
+    return await selectedAsset.getPayoutPeriod().toPromise();
+}
+
+async function getProposalApprovalThreshold() {
+    return await selectedAsset.getProposalApprovalThreshold().toPromise();
 }
 
 async function getTreasuryBalance() {
@@ -173,82 +178,28 @@ async function getFunds() {
     return parseInt(await selectedAsset.getFunds().toPromise(), 10);
 }
 
-/***********************
- *                     *
- *   Event Handlers    *
- *                     *
- ***********************/
-
-/*
-function initializeState() {
-    return async cachedState => {
-        return {
-            ...cachedState,
-            TOTAL_SHARES: await getTotalShares(),
-            TREASURY_RATIO_DENOMINATOR: await getTreasuryRatioDenominator(),
-            functionIds: await getTaskFunctionValues(),
-            currentUser: '',
-            assetDescription: await getAssetDescription(),
-            treasuryRatio: await getTreasuryRatio(),
-            payoutPeriod: await getPayoutPeriod(),
-            proposalApprovalThreshold: await getProposalApprovalThreshold(),
-            treasuryBalance: await getTreasuryBalance(),
-            funds: await getFunds(),
-            owners: await getOwners(),
-            offers: await getActiveOffers(),
-            proposals: await getActiveProposals(),
-            supportedProposals: []
-        }
-    }
-}
-
-
-async function getTotalShares() {
-    return parseInt(await app.call('TOTAL_SHARES').toPromise(), 10);
-}
-
-async function getTreasuryRatioDenominator() {
-    return parseInt(await app.call('TREASURY_RATIO_DENOMINATOR').toPromise(), 10);
-}
-
-async function getTaskFunctionValues() {
-    return await app.call('getTaskFunctionValues').toPromise();
-}
-
-async function getTreasuryRatio() {
-    return await app.call('getTreasuryRatio').toPromise();
-}
-
-async function getPayoutPeriod() {
-    return await app.call('getPayoutPeriod').toPromise();
-}
-
-async function getProposalApprovalThreshold() {
-    return await app.call('getProposalApprovalThreshold').toPromise();
-}
-
 async function getOwners() {
-    let ownersCount = parseInt(await app.call('getOwnersCount').toPromise(), 10);
+    let ownersCount = parseInt(await selectedAsset.getOwnersCount().toPromise(), 10);
     let owners = [];
     for (let i = 0; i != ownersCount; ++i) {
-        let address = await app.call('getOwnerAddressByIndex', i).toPromise();
+        let address = await selectedAsset.getOwnerAddressByIndex(i).toPromise();
         owners.push({
             'address': address,
-            'shares': parseInt(await app.call('getSharesByAddress', address).toPromise(), 10),
-            'sharesOnSale': parseInt(await app.call('getSharesOnSaleByAddress', address).toPromise(), 10)
+            'shares': parseInt(await selectedAsset.getSharesByAddress(address).toPromise(), 10),
+            'sharesOnSale': parseInt(await selectedAsset.getSharesOnSaleByAddress(address).toPromise(), 10)
         });
     }
     return owners;
 }
 
 async function getActiveOffers() {
-    let offersCount = parseInt(await app.call('getActiveOffersCount').toPromise(), 10);
+    let offersCount = parseInt(await selectedAsset.getActiveOffersCount().toPromise(), 10);
     let offers = {
         sellOffers: [],
         buyOffers: []
     };
     for (let i = 0; i != offersCount; ++i) {
-        let offer = await app.call('getActiveOfferByIndex', i).toPromise();
+        let offer = await selectedAsset.getActiveOfferByIndex(i).toPromise();
         if (offer.offerType == 'SELL') {
             offers.sellOffers.push(offer);
         } else {
@@ -266,26 +217,25 @@ async function getActiveOffers() {
 }
 
 async function getActiveProposals() {
-    let count = parseInt(await app.call('getActiveProposalsCount').toPromise(), 10);
+    let count = parseInt(await selectedAsset.getActiveProposalsCount().toPromise(), 10);
     let proposals = [];
     for (let i = 0; i != count; ++i) {
-        proposals.push(await app.call('getActiveProposalByIndex', i).toPromise());
+        proposals.push(await selectedAsset.getActiveProposalByIndex(i).toPromise());
     }
     return proposals;
 }
 
 async function getSupportedProposals(owner) {
 
-    if (!owner) return [];
+    if (!owner || !selectedAsset) return [];
 
-    let count = parseInt(await app.call('getSupportedProposalsCount', owner).toPromise(), 10);
+    let count = parseInt(await selectedAsset.getSupportedProposalsCount(owner).toPromise(), 10);
     let proposals = [];
     for (let i = 0; i != count; ++i) {
-        let id = parseInt(await app.call('getSupportedProposalIdByIndex', owner, i).toPromise(), 10);
-        let proposal = await app.call('getProposal', id).toPromise();
+        let id = parseInt(await selectedAsset.getSupportedProposalIdByIndex(owner, i).toPromise(), 10);
+        let proposal = await selectedAsset.getProposal(id).toPromise();
         proposal.idx = i;
         proposals.push(proposal);
     }
     return proposals;
 }
-*/
