@@ -33,12 +33,68 @@ export default [
     "type": "function"
   },
   {
+    "constant": true,
+    "inputs": [],
+    "name": "getProposalApprovalThreshold",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "executeProposal",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "constant": false,
     "inputs": [],
     "name": "payOwners",
     "outputs": [],
     "payable": false,
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "supportProposal",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "getActiveProposalsCount",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -71,6 +127,58 @@ export default [
     "outputs": [],
     "payable": false,
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "revokeProposalSupport",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "getTaskFunctionValues",
+    "outputs": [
+      {
+        "name": "CHANGE_APPROVAL_TRESHOLD",
+        "type": "uint8"
+      },
+      {
+        "name": "CHANGE_ASSET_DESCRIPTION",
+        "type": "uint8"
+      },
+      {
+        "name": "CHANGE_PAYOUT_PERIOD",
+        "type": "uint8"
+      },
+      {
+        "name": "CHANGE_TREASURY_RATIO",
+        "type": "uint8"
+      },
+      {
+        "name": "EXECUTE_EXTERNAL_CONTRACT",
+        "type": "uint8"
+      },
+      {
+        "name": "ORIGINAL",
+        "type": "uint8"
+      },
+      {
+        "name": "SEND_MONEY",
+        "type": "uint8"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "pure",
     "type": "function"
   },
   {
@@ -251,6 +359,69 @@ export default [
   },
   {
     "constant": true,
+    "inputs": [
+      {
+        "name": "idx",
+        "type": "uint256"
+      }
+    ],
+    "name": "getActiveProposalByIndex",
+    "outputs": [
+      {
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "name": "reason",
+        "type": "string"
+      },
+      {
+        "name": "functionId",
+        "type": "uint8"
+      },
+      {
+        "name": "uintArg",
+        "type": "uint256"
+      },
+      {
+        "name": "stringArg",
+        "type": "string"
+      },
+      {
+        "name": "addressArg",
+        "type": "address"
+      },
+      {
+        "name": "support",
+        "type": "uint256"
+      },
+      {
+        "name": "creationDate",
+        "type": "uint256"
+      },
+      {
+        "name": "expirationDate",
+        "type": "uint256"
+      },
+      {
+        "name": "completionDate",
+        "type": "uint256"
+      },
+      {
+        "name": "cancelled",
+        "type": "bool"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
     "inputs": [],
     "name": "TOTAL_SHARES",
     "outputs": [
@@ -293,6 +464,20 @@ export default [
     "outputs": [],
     "payable": false,
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "getProposalsCount",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -356,6 +541,83 @@ export default [
     "type": "function"
   },
   {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "propId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getProposal",
+    "outputs": [
+      {
+        "name": "id",
+        "type": "uint256"
+      },
+      {
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "name": "reason",
+        "type": "string"
+      },
+      {
+        "name": "functionId",
+        "type": "uint8"
+      },
+      {
+        "name": "uintArg",
+        "type": "uint256"
+      },
+      {
+        "name": "stringArg",
+        "type": "string"
+      },
+      {
+        "name": "addressArg",
+        "type": "address"
+      },
+      {
+        "name": "support",
+        "type": "uint256"
+      },
+      {
+        "name": "creationDate",
+        "type": "uint256"
+      },
+      {
+        "name": "expirationDate",
+        "type": "uint256"
+      },
+      {
+        "name": "completionDate",
+        "type": "uint256"
+      },
+      {
+        "name": "cancelled",
+        "type": "bool"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "idx",
+        "type": "uint256"
+      }
+    ],
+    "name": "removeInactiveSupportedProposalByIndex",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "constant": false,
     "inputs": [
       {
@@ -389,6 +651,40 @@ export default [
     ],
     "payable": false,
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "reason",
+        "type": "string"
+      },
+      {
+        "name": "expirationDate",
+        "type": "uint256"
+      },
+      {
+        "name": "functionId",
+        "type": "uint256"
+      },
+      {
+        "name": "uintArg",
+        "type": "uint256"
+      },
+      {
+        "name": "stringArg",
+        "type": "string"
+      },
+      {
+        "name": "addressArg",
+        "type": "address"
+      }
+    ],
+    "name": "makeProposal",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -459,6 +755,20 @@ export default [
     ],
     "payable": false,
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": false,
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256"
+      }
+    ],
+    "name": "cancelProposal",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
