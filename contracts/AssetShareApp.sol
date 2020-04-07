@@ -103,7 +103,7 @@ contract AssetShareApp is AragonApp {
     // increase the amount of shares for a given address;
     // if that address was not previously an owner, it becomes one;
     // proposal support is adjusted based on new amount of shares
-    function increaseShares(address ownerAddress, uint amount) private {
+    function increaseShares(address ownerAddress, uint amount) internal {
         Owner storage owner = ownershipMap[ownerAddress];
         if (owner.shares == 0) {
             addOwner(ownerAddress, amount);
@@ -115,7 +115,7 @@ contract AssetShareApp is AragonApp {
     // decrease the amount of shares for a given owner;
     // if the owner is left without shares, they are removed from the list of owners;
     // proposal support is adjusted based on new amount of shares
-    function decreaseShares(address ownerAddress, uint amount) private {
+    function decreaseShares(address ownerAddress, uint amount) internal {
         Owner storage owner = ownershipMap[ownerAddress];
         owner.shares -= amount;
         if (owner.shares == 0) {
@@ -124,19 +124,19 @@ contract AssetShareApp is AragonApp {
     }
 
     // transfers shares from one account to another
-    function transferShares(address from, address to, uint sharesAmount) private {
+    function transferShares(address from, address to, uint sharesAmount) internal {
         decreaseShares(from, sharesAmount);
         increaseShares(to, sharesAmount);
     }
 
     // creates a new owner
-    function addOwner(address ownerAddress, uint shares) private {
+    function addOwner(address ownerAddress, uint shares) internal {
         ownershipMap[ownerAddress] = Owner(shares, 0, ownerList.length);
         ownerList.push(ownerAddress);
     }
 
     // removes an owner from the ownerList
-    function removeOwner(address ownerAddress) private {
+    function removeOwner(address ownerAddress) internal {
         uint pos = ownershipMap[ownerAddress].listPosition;
         ownerList[pos] = ownerList[ownerList.length - 1];
         ownershipMap[ownerList[pos]].listPosition = pos;

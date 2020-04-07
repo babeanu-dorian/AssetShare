@@ -5,6 +5,7 @@ const { hash } = require('eth-ens-namehash');
 const deployDAO = require('./helpers/deployDAO');
 
 const AssetShareApp = artifacts.require('AssetShareAppTestHelper.sol');
+const ANY_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 const getLog = (receipt, logName, argName) => {
     const log = receipt.logs.find(({ event }) => event === logName);
@@ -45,11 +46,9 @@ contract('AssetShareAppTestHelper', ([contractCreator, appManager, user1, user2]
         assert.equal(count, 1);
         
         // Assert that the owner owns all shares.
-        var owner = await app.getOwnerAddressByIndex(0);
-        var ownerShares1 = parseInt(await app.getShares({from: owner})); // Getter option 1.
-        var ownerShares2 = parseInt(await app.getSharesByAddress(owner)); // Getter option 2.
-        assert.equal(ownerShares1, parseInt(await app.TOTAL_SHARES()));
-        assert.equal(ownerShares2, parseInt(await app.TOTAL_SHARES()));
+        var owner = await app.getOwnerAddressByIndex(0);1.
+        var ownerShares = parseInt(await app.getSharesByAddress(owner));
+        assert.equal(ownerShares, parseInt(await app.TOTAL_SHARES()));
     });
     
     it('Initializing account is the first owner', async () => {
@@ -61,6 +60,87 @@ contract('AssetShareAppTestHelper', ([contractCreator, appManager, user1, user2]
         var treasuryBalance = parseInt(await app.getTreasuryBalance());
         assert.equal(treasuryBalance, 0);
     });
+    
+    it('Initialize with 0 funds', async () => {
+        var funds = parseInt(await app.getFunds());
+        assert.equal(funds, 0);
+    });
+    
+    it('Initialize with empty asset description', async () => {
+        var assetDesc = await app.getAssetDescription();
+        assert.equal(assetDesc, "");
+    });
+    
+    it('increaseShares increases shares', async () => {
+        assert.equal(parseInt(await app.getSharesByAddress(user1)), 0);
+        await app.callIncreaseShares(user1, 10);
+        assert.equal(parseInt(await app.getSharesByAddress(user1)), 10);
+        await app.callIncreaseShares(user1, 20);
+        assert.equal(parseInt(await app.getSharesByAddress(user1)), 30);
+    });
+    
+    it('decreaseShares decreases shares', async () => {
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        assert.equal(parseInt(await app.getSharesByAddress(contractCreator)), TOTAL_SHARES);
+        await app.callDecreaseShares(contractCreator, 10);
+        assert.equal(parseInt(await app.getSharesByAddress(contractCreator)), TOTAL_SHARES - 10);
+        await app.callDecreaseShares(contractCreator, 20);
+        assert.equal(parseInt(await app.getSharesByAddress(contractCreator)), TOTAL_SHARES - 30);
+    });
+    
+    it('transferShares transfers shares', async () => {
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        assert.equal(parseInt(await app.getSharesByAddress(contractCreator)), TOTAL_SHARES);
+        assert.equal(parseInt(await app.getSharesByAddress(user1)), 0);
+        await app.callTransferShares(contractCreator, user1, 10);
+        assert.equal(parseInt(await app.getSharesByAddress(contractCreator)), TOTAL_SHARES - 10);
+        assert.equal(parseInt(await app.getSharesByAddress(user1)), 10);
+        await app.callTransferShares(contractCreator, user1, 20);
+        assert.equal(parseInt(await app.getSharesByAddress(contractCreator)), TOTAL_SHARES - 30);
+        assert.equal(parseInt(await app.getSharesByAddress(user1)), 30);
+    });
+    
+    it('addOwner/removeOwner adds/removes an owner with the given number of shares', async () => {
+        
+        // Add user1 as owner.
+        assert.equal(parseInt(await app.getSharesByAddress(user1)), 0);
+        assert.equal(parseInt(await app.getOwnersCount()), 1);
+        await app.callAddOwner(user1, 10);
+        assert.equal(parseInt(await app.getSharesByAddress(user1)), 10);
+        assert.equal(parseInt(await app.getOwnersCount()), 2);
+        
+        // Remove user1 as owner.
+        await app.callRemoveOwner(user1);
+        assert.equal(parseInt(await app.getSharesByAddress(user1)), 0);
+        assert.equal(parseInt(await app.getOwnersCount()), 1);
+    });
+    
+    it('External payments are distributed over the funds and treasury', async () => {
+        
+        // Calculate expected values.
+        var payment = 1000;
+        var treasuryRatioNum = parseInt(await app.getTreasuryRatio());
+        var treasuryRatioDenom = parseInt(await app.TREASURY_RATIO_DENOMINATOR());
+        var treasury = Math.floor(payment * treasuryRatioNum / treasuryRatioDenom);
+        
+        // Assert actual values.
+        await app.payment("test", {from: user1, value: 1000});
+        assert.equal(parseInt(await app.getTreasuryBalance()), treasury);
+        assert.equal(parseInt(await app.getFunds()), payment - treasury);
+    });
+    
+//    it('Payout to owners', async () => {
+//        
+//        // Deposit money into the treasury.
+//        await app.treasuryDeposit('InfoMessage', {from: user1, value: 1e12});
+//        
+//        // Payout to the shareholders.
+//        var currentTimeSec = Date.now() / 1000;
+//        await app.payOwners({timestamp: currentTimeSec + parseInt(await app.payoutPeriod)});
+//        
+//        // Assert that the owners have received the payout.
+//        // TODO - How to get Ether from address?
+//    });
     
     it('Add to treasury increases balance', async () => {
         var treasuryBalanceBefore = parseInt(await app.getTreasuryBalance());
@@ -79,156 +159,218 @@ contract('AssetShareAppTestHelper', ([contractCreator, appManager, user1, user2]
         assert.equal(treasuryBalanceAfter2, treasuryBalanceBefore + 1000 + 500);
     });
     
-//    it('Payout to owners', async () => {
-//        
-//        // Deposit money into the treasury.
-//        await app.treasuryDeposit('InfoMessage', {from: user1, value: 1e12});
-//        
-//        // Payout to the shareholders.
-//        var currentTimeSec = Date.now() / 1000;
-//        await app.payOwners({timestamp: currentTimeSec + parseInt(await app.payoutPeriod)});
-//        
-//        // Assert that the owners have received the payout.
-//        // TODO - How to get Ether from address?
-//    });
-    
-    it('Testing to see if we can call internal functions', async () => {
+    it('Create new sell offer', async () => {
+        assert.equal(parseInt(await app.getOffersCount()), 0);
         
-        await app.callAddOwner(ADDRESS_1, 0);
-    });
-    
-    it('New sell offer autocompletes equal buy offer', async () => {
-        
-        // Define a seller (the initial owner) and a random buyer.
-        var seller = await app.getOwnerAddressByIndex(0);
-        var buyer = user1;
-        
-        // Assert initial shares state.
-        const TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
-        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES);
-        assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), 0);
-        assert.equal(parseInt(await app.getSharesByAddress(buyer)), 0);
-        assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
-        
-        // Assert that there are no active offers.
-        assert.equal(parseInt(await app.getActiveBuyOffersCount()), 0);
-        assert.equal(parseInt(await app.getActiveSellOffersCount()), 0);
-        
-        // Create the sell offer.
-        var numShares = 20;
+        // Create sell offer.
+        var numShares = 10;
         var price = 1000;
-        await app.offerToSell(numShares, price, {from: seller});
-        var sellOfferId = parseInt(await app.getLatestOfferId());
+        var seller = contractCreator;
+        await app.offerToSell(numShares, price, ANY_ADDRESS, {from: seller});
         
-        // Assert that the seller now has shares for sale.
+        // Assert that the offer was made and that the creator now has shares on sale.
+        assert.equal(parseInt(await app.getOffersCount()), 1);
         assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), numShares);
         
-        // Create buy offer.
-        await app.offerToBuy(numShares, price, {from: buyer, value: numShares * price});
-        var buyOfferId = parseInt(await app.getLatestOfferId());
-        
-        // Assert that the buyer has sent (price * numShares) wei to the contract.
-        // TODO - Implement. Can maybe use transaction details returned by the payable function?
-        
-        // Assert that the seller has lost and the buyer has obtained the shares (and therefore is an owner).
-        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES - numShares);
-        assert.equal(parseInt(await app.getSharesByAddress(buyer)), numShares);
-        
-        // Assert that both offers are completed, but are not yet collected.
-        var sellOffer = await app.getOffer(sellOfferId);
-        var buyOffer = await app.getOffer(buyOfferId);
-        assert.equal(sellOffer.sharesRemaining, 0);
-        assert.equal(buyOffer.sharesRemaining, 0);
-        assert.equal(sellOffer.weiAmount, numShares * price);
-        assert.equal(buyOffer.weiAmount, 0);
+        // Assert that the offer contains the right properties.
+        var sellOffer = await app.getOffer(0);
+        assert.equal(sellOffer.id, 0);
+        assert.equal(sellOffer.offerType, "SELL");
+        assert.equal(sellOffer.seller, seller);
+        assert.equal(sellOffer.buyer, ANY_ADDRESS);
+        assert.equal(sellOffer.shares, numShares);
+        assert.equal(sellOffer.price, price);
         assert.equal(sellOffer.cancelled, false);
-        assert.equal(buyOffer.cancelled, false);
-        
-        // Collect the offers.
-        await app.collectOffer(sellOfferId, {from: seller});
-        await app.collectOffer(buyOfferId, {from: buyer});
-        
-        // Assert that the offers have been collected.
-        sellOffer = await app.getOffer(sellOfferId);
-        buyOffer = await app.getOffer(buyOfferId);
-        assert.equal(sellOffer.cancelled, true);
-        assert.equal(buyOffer.cancelled, true);
-        
-        // Assert that collecting the sell offer sends (price * numShares) wei to the seller.
-        // TODO - Implement. How to get the transferred funds?
-        
     });
     
-    it('2x 10 shares sell offer + 1x 15 shares buy offer same price autocompletes', async () => {
+    it('Create new buy offer', async () => {
+        assert.equal(parseInt(await app.getOffersCount()), 0);
         
-        // Define a seller (the initial owner) and a random buyer.
-        var seller = await app.getOwnerAddressByIndex(0);
+        // Create buy offer.
+        var numShares = 10;
+        var price = 1000;
+        var buyer = user1;
+        await app.offerToBuy(numShares, price, ANY_ADDRESS, {from: buyer, value: numShares * price});
+        
+        // Assert that the offer was made and that the creator still does not have shares on sale.
+        assert.equal(parseInt(await app.getOffersCount()), 1);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
+        
+        // Assert that the offer contains the right properties.
+        var buyOffer = await app.getOffer(0);
+        assert.equal(buyOffer.id, 0);
+        assert.equal(buyOffer.offerType, "BUY");
+        assert.equal(buyOffer.seller, ANY_ADDRESS);
+        assert.equal(buyOffer.buyer, buyer);
+        assert.equal(buyOffer.shares, numShares);
+        assert.equal(buyOffer.price, price);
+        assert.equal(buyOffer.cancelled, false);
+    });
+    
+    it('Fill an entire existing sell offer', async () => {
+        assert.equal(parseInt(await app.getOffersCount()), 0);
+        
+        var numShares = 10;
+        var price = 1000;
+        var seller = contractCreator;
         var buyer = user1;
         
         // Assert initial shares state.
-        const TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
         assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES);
         assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), 0);
         assert.equal(parseInt(await app.getSharesByAddress(buyer)), 0);
         assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
         
-        // Assert that there are no active offers.
-        assert.equal(parseInt(await app.getActiveBuyOffersCount()), 0);
-        assert.equal(parseInt(await app.getActiveSellOffersCount()), 0);
+        // Create sell offer.
+        await app.offerToSell(numShares, price, ANY_ADDRESS, {from: seller});
         
-        // Create the sell offers.
-        var numSharesPerSellOffer = 10;
+        // Buy the sell offer.
+        await app.buyShares(0, numShares, {from: buyer, value: numShares * price});
+        
+        // Assert that the offer was completed.
+        var sellOffer = await app.getOffer(0);
+        assert.equal(sellOffer.shares, 0);
+        
+        // Assert that the shares were transferred.
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES - numShares);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), 0);
+        assert.equal(parseInt(await app.getSharesByAddress(buyer)), numShares);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
+    });
+    
+    it('Fill a partial existing sell offer', async () => {
+        assert.equal(parseInt(await app.getOffersCount()), 0);
+        
+        var numSharesOnSale = 50;
+        var numSharesBought = 10;
         var price = 1000;
-        await app.offerToSell(numSharesPerSellOffer, price, {from: seller});
-        var sellOfferId1 = parseInt(await app.getLatestOfferId());
-        await app.offerToSell(numSharesPerSellOffer, price, {from: seller});
-        var sellOfferId2 = parseInt(await app.getLatestOfferId());
+        var seller = contractCreator;
+        var buyer = user1;
         
-        // Assert that the seller now has shares for sale.
-        assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), numSharesPerSellOffer * 2);
+        // Assert initial shares state.
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), 0);
+        assert.equal(parseInt(await app.getSharesByAddress(buyer)), 0);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
+        
+        // Create sell offer.
+        await app.offerToSell(numSharesOnSale, price, ANY_ADDRESS, {from: seller});
+        
+        // Partially fill the sell offer.
+        await app.buyShares(0, numSharesBought, {from: buyer, value: numSharesBought * price});
+        
+        // Assert that the offer was partially completed.
+        var sellOffer = await app.getOffer(0);
+        var sharesOnSale = numSharesOnSale - numSharesBought;
+        assert.equal(sellOffer.shares, sharesOnSale);
+        
+        // Assert that the shares were transferred.
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES - numSharesBought);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), sharesOnSale);
+        assert.equal(parseInt(await app.getSharesByAddress(buyer)), numSharesBought);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
+    });
+    
+    it('Fill an entire existing buy offer', async () => {
+        assert.equal(parseInt(await app.getOffersCount()), 0);
+        
+        var numShares = 10;
+        var price = 1000;
+        var seller = contractCreator;
+        var buyer = user1;
+        
+        // Assert initial shares state.
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), 0);
+        assert.equal(parseInt(await app.getSharesByAddress(buyer)), 0);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
         
         // Create buy offer.
-        var numSharesBuyOffer = 15;
-        await app.offerToBuy(numSharesBuyOffer, price, {from: buyer, value: numSharesBuyOffer * price});
-        var buyOfferId = parseInt(await app.getLatestOfferId());
+        await app.offerToBuy(numShares, price, ANY_ADDRESS, {from: buyer, value: numShares * price});
         
-        // Assert that the buyer has sent (price * numSharesBuyOffer) wei to the contract.
-        // TODO - Implement. Can maybe use transaction details returned by the payable function?
+        // Fill the buy offer.
+        await app.sellShares(0, numShares, {from: seller});
         
-        // Assert that the seller has lost and the buyer has obtained the shares (and therefore is an owner).
-        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES - numSharesBuyOffer);
-        assert.equal(parseInt(await app.getSharesByAddress(buyer)), numSharesBuyOffer);
+        // Assert that the offer was completed.
+        var buyOffer = await app.getOffer(0);
+        assert.equal(buyOffer.shares, 0);
         
-        // Assert that both offers are completed, but are not yet collected.
-        var sellOffer1 = await app.getOffer(sellOfferId1);
-        var sellOffer2 = await app.getOffer(sellOfferId2);
-        var buyOffer = await app.getOffer(buyOfferId);
-        var secondSellOfferSharesRemaining = numSharesPerSellOffer * 2 - numSharesBuyOffer;
-        assert.equal(sellOffer1.sharesRemaining, 0);
-        assert.equal(sellOffer2.sharesRemaining, secondSellOfferSharesRemaining);
-        assert.equal(buyOffer.sharesRemaining, 0);
-        assert.equal(sellOffer1.weiAmount, numSharesPerSellOffer * price);
-        assert.equal(sellOffer2.weiAmount, secondSellOfferSharesRemaining * price);
-        assert.equal(buyOffer.weiAmount, 0);
-        assert.equal(sellOffer1.cancelled, false);
-        assert.equal(sellOffer2.cancelled, false);
-        assert.equal(buyOffer.cancelled, false);
+        // Assert that the shares were transferred.
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES - numShares);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), 0);
+        assert.equal(parseInt(await app.getSharesByAddress(buyer)), numShares);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
+    });
+    
+    it('Fill a partial existing buy offer', async () => {
+        assert.equal(parseInt(await app.getOffersCount()), 0);
         
-        // Collect the offers.
-        await app.collectOffer(sellOfferId1, {from: seller});
-        await app.collectOffer(sellOfferId2, {from: seller});
-        await app.collectOffer(buyOfferId, {from: buyer});
+        var numSharesSold = 10;
+        var numSharesOnBuy = 50;
+        var price = 1000;
+        var seller = contractCreator;
+        var buyer = user1;
         
-        // Assert that the offers have been collected.
-        sellOffer1 = await app.getOffer(sellOfferId1);
-        sellOffer2 = await app.getOffer(sellOfferId2);
-        buyOffer = await app.getOffer(buyOfferId);
-        assert.equal(sellOffer1.cancelled, true);
-        assert.equal(sellOffer2.cancelled, true);
+        // Assert initial shares state.
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), 0);
+        assert.equal(parseInt(await app.getSharesByAddress(buyer)), 0);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
+        
+        // Create buy offer.
+        await app.offerToBuy(numSharesOnBuy, price, ANY_ADDRESS, {from: buyer, value: numSharesOnBuy * price});
+        
+        // Partially fill the buy offer.
+        await app.sellShares(0, numSharesSold, {from: seller});
+        
+        // Assert that the offer was partially completed.
+        var buyOffer = await app.getOffer(0);
+        assert.equal(parseInt(buyOffer.shares), numSharesOnBuy - numSharesSold);
+        
+        // Assert that the shares were transferred.
+        var TOTAL_SHARES = parseInt(await app.TOTAL_SHARES());
+        assert.equal(parseInt(await app.getSharesByAddress(seller)), TOTAL_SHARES - numSharesSold);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(seller)), 0);
+        assert.equal(parseInt(await app.getSharesByAddress(buyer)), numSharesSold);
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(buyer)), 0);
+    });
+    
+    it('Cancel sell offer', async () => {
+        assert.equal(parseInt(await app.getOffersCount()), 0);
+        
+        // Create sell offer.
+        await app.offerToSell(10, 1000, ANY_ADDRESS, {from: contractCreator});
+        
+        // Cancel buy offer.
+        await app.cancelOffer(0, {from: contractCreator});
+        
+        // Assert that the offer was cancelled.
+        var sellOffer = await app.getOffer(0);
+        assert.equal(sellOffer.cancelled, true);
+        
+        // Assert that the owner of the sell offer no longer has shares for sale.
+        assert.equal(parseInt(await app.getSharesOnSaleByAddress(contractCreator)), 0);
+        
+    });
+    
+    it('Cancel buy offer', async () => {
+        assert.equal(parseInt(await app.getOffersCount()), 0);
+        
+        // Create buy offer.
+        await app.offerToBuy(10, 1000, ANY_ADDRESS, {from: user1, value: 10 * 1000});
+        
+        // Cancel buy offer.
+        await app.cancelOffer(0, {from: user1});
+        
+        // Assert that the offer was cancelled.
+        var buyOffer = await app.getOffer(0);
         assert.equal(buyOffer.cancelled, true);
-        
-        // Assert that collecting the sell offers sends (price * numSharesBuyOffer) wei to the seller.
-        // TODO - Implement. How to get the transferred funds?
-        
     });
 });
