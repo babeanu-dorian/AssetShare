@@ -54,7 +54,7 @@ app.store(
                         funds: await getFunds()
                     }
                 case 'NEW_OFFER':
-                case 'SHARES_TRANSFERED':
+                case 'SHARES_TRANSFERRED':
                 case 'CANCELLED_OFFER':
                     return {
                         ...nextState,
