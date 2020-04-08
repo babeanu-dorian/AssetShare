@@ -28,9 +28,8 @@ async (state, {event}) => {
                         funds: await getFunds()
                     }
                 case 'NEW_OFFER':
-                case 'COMPLETED_OFFER':
+                case 'SHARES_TRANSFERRED':
                 case 'CANCELLED_OFFER':
-                    await getActiveOffers();
                     return {
                         ...nextState,
                         owners: await getOwners(),
@@ -71,6 +70,7 @@ function initializeState() {
     }
 }
 
+
 async function getTotalShares() {
     return parseInt(await app.call('TOTAL_SHARES').toPromise(), 10);
 }
@@ -91,7 +91,7 @@ async function getOwners() {
         owners.push({
             'address': address,
             'shares': parseInt(await app.call('getSharesByAddress', address).toPromise(), 10),
-            'sharesOnSale': parseInt(await app.call('getSharesOnSale', address).toPromise(), 10)
+            'sharesOnSale': parseInt(await app.call('getSharesOnSaleByAddress', address).toPromise(), 10)
         });
     }
     return owners;
@@ -99,9 +99,24 @@ async function getOwners() {
 
 async function getActiveOffers() {
     let offersCount = parseInt(await app.call('getActiveOffersCount').toPromise(), 10);
-    let offers = [];
+    let offers = {
+        sellOffers: [],
+        buyOffers: []
+    };
     for (let i = 0; i != offersCount; ++i) {
-        offers.push(await app.call('getActiveOfferByIndex', i).toPromise());
+        let offer = await app.call('getActiveOfferByIndex', i).toPromise();
+        if (offer.offerType == 'SELL') {
+            offers.sellOffers.push(offer);
+        } else {
+            offers.buyOffers.push(offer);
+        }
     }
+
+    // sort sell offers in increasing price order
+    offers.sellOffers.sort((a, b) => parseInt(a.price) - parseInt(b.price));
+
+    // sort buy offers in decreasing price order
+    offers.buyOffers.sort((a, b) => parseInt(b.price) - parseInt(a.price));
+
     return offers;
 }
