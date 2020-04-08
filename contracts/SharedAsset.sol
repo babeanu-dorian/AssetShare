@@ -225,7 +225,8 @@ contract SharedAsset {
 
     // the ether produced by the asset(s) is sent by calling this function
     function payment(string info) external payable {
-        require(treasuryRatio <= TREASURY_RATIO_DENOMINATOR, "Payments are not allowed to invalid contracts.");
+        // Payments are not allowed to invalid contracts
+        require(treasuryRatio <= TREASURY_RATIO_DENOMINATOR, "");
         uint treasuryIncrease = (msg.value * treasuryRatio) / TREASURY_RATIO_DENOMINATOR;
         uint payout = msg.value - treasuryIncrease;
         payoutHistory.push(DataPoint(payout, block.timestamp));
