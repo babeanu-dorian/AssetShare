@@ -15,6 +15,7 @@ import {
     TextInput,
     textStyle
 } from '@aragon/ui'
+
 import styled from 'styled-components'
 import assetJsonInterface from './SharedAssetInterface'
 
@@ -62,7 +63,7 @@ function App() {
     const [amountToSend, setAmountToSend] = useState('');
     const [proposalText, setProposalText] = useState('');
     const [proposalReason, setProposalReason] = useState('');
-    const [endDate, setEndDate] = useState('' + dateToUnixTimestamp(new Date()));
+    const [endDate, setEndDate] = useState('' + new Date());
     const anyAddress = '0x0000000000000000000000000000000000000000';
     const weiInEth = 1000000000000000000.0;
 
@@ -593,10 +594,12 @@ function App() {
                             value={proposalReason}
                             onChange={event => setProposalReason(event.target.value)}
                         /> <br/>
-                            End date (UNIX): <TextInput.Number
-                            value={endDate}
-                            onChange={event => setEndDate(event.target.value)}
-                        /> <br/>
+                            End date (UNIX):
+
+                        <TextInput type="date" value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                        />
+                        <br/>
                             <Button
                                 display="label"
                                 label="Make proposal"
