@@ -5,30 +5,64 @@ import {
     Button,
     Checkbox,
     DataView,
+    DropDown,
+    GU,
     Header,
     IdentityBadge,
     Main,
     SyncIndicator,
     Tabs,
     TextInput,
-    textStyle,
+    textStyle
 } from '@aragon/ui'
 import styled from 'styled-components'
-
+import assetJsonInterface from './SharedAssetInterface'
 
 function App() {
-    const {api, appState, path, connectedAccount} = useAragonApi();
-    const {TOTAL_SHARES, treasuryBalance, funds, owners, offers, isSyncing} = appState;
+    const {api, appState} = useAragonApi();
+    const {
+        sharedAssets,
+        TOTAL_SHARES,
+        TREASURY_RATIO_DENOMINATOR,
+        functionIds,
+        currentUser,
+        assetDescription,
+        treasuryRatio,
+        payoutPeriod,
+        proposalApprovalThreshold,
+        treasuryBalance,
+        funds,
+        owners,
+        offers,
+        proposals,
+        supportedProposals,
+        isSyncing
+    } = appState;
     const [selectedTab, setSelectedTab] = useState(0);
-    const [amount, setAmount] = useState(0);
+    const [description, setDescription] = useState('');
+    const [selectedAsset, setSelectedAsset] = useState(null);
+    const [assetEventSubscription, setAssetEventSubscription] = useState(null);
+    const [amount, setAmount] = useState('');
     const [message, setMessage] = useState('');
     const [shares, setShares] = useState('');
     const [price, setPrice] = useState('');
-    const [intendedParty, setIntendedParty] = useState('');
-    const [autocompleteCheck, setAutocompleteCheck] = useState(true);
     const [selectedOfferTab, setSelectedOfferTab] = useState(0);
     const [partialShares, setPartialShares] = useState({});
-
+    const [intendedParty, setIntendedParty] = useState('');
+    const [autocompleteCheck, setAutocompleteCheck] = useState(true);
+    const [selectedProposalFunction, setSelectedProposalFunction] = useState(0);
+    const [newApprovalThreshold, setNewApprovalThreshold] = useState('');
+    const [newAssetDescription, setNewAssetDescription] = useState('');
+    const [newPayoutPeriod, setNewPayoutPeriod] = useState('');
+    const [newTreasuryRatio, setNewTreasuryRatio] = useState('');
+    const [contractAddress, setContractAddress] = useState('');
+    const [functionSignature, setFunctionSignature] = useState('');
+    const [amountToSendInCall, setAmountToSendInCall] = useState('');
+    const [addressToSend, setAddressToSend] = useState('');
+    const [amountToSend, setAmountToSend] = useState('');
+    const [proposalText, setProposalText] = useState('');
+    const [proposalReason, setProposalReason] = useState('');
+    const [endDate, setEndDate] = useState('' + dateToUnixTimestamp(new Date()));
     const anyAddress = '0x0000000000000000000000000000000000000000';
     const weiInEth = 1000000000000000000.0;
 
@@ -40,20 +74,20 @@ function App() {
         return amount * weiInEth;
     }
 
-    function sharesToPercentage(shares) {
-        return shares * 100 / TOTAL_SHARES;
+    function percentageToAmount(percentage, total) {
+        return percentage * total / 100;
     }
 
-    function percentageToShares(percentage) {
-        return percentage * TOTAL_SHARES / 100;
+    function amountToPercentage(amount, total) {
+        return amount * 100 / total;
     }
 
     function ethPerPercentageToWeiPerShare(amount) {
-        return ethToWei(amount) * 100 / TOTAL_SHARES;
+        return ethToWei(amount * 100 / TOTAL_SHARES);
     }
 
     function calcPartialPrice(percentageShares, pricePerShare) {
-        return pricePerShare * percentageToShares(percentageShares);
+        return pricePerShare * percentageToAmount(percentageShares, TOTAL_SHARES);
     }
 
     function displayAddress(address) {
@@ -77,13 +111,13 @@ function App() {
             if (sellOffer.buyer != anyAddress && sellOffer.buyer != buyOffer.buyer)
                 return sellShares(sellOffer, autocompleteOn, buyIdx + 1);
 
-             // skip offers where seller is not the intended seller
+            // skip offers where seller is not the intended seller
             if (buyOffer.seller != anyAddress && buyOffer.seller != sellOffer.seller)
                 return sellShares(sellOffer, autocompleteOn, buyIdx + 1);
 
             if (sellOffer.id == null) { // no existing sell offer, just complete buy offers
                 const sharesToSell = (parseInt(sellOffer.shares) >= parseInt(buyOffer.shares) ? buyOffer.shares : sellOffer.shares);
-                api.sellShares(buyOffer.id, sharesToSell).subscribe(
+                selectedAsset.sellShares(buyOffer.id, sharesToSell).subscribe(
                     txHash => {
                         sellOffer.shares -= sharesToSell;
                         sellShares(sellOffer, autocompleteOn, buyIdx + 1);
@@ -91,7 +125,7 @@ function App() {
                     err => console.log(err)
                 );
             } else { // existing sell offer, combine offers
-                api.combineOffers(sellOffer.id, buyOffer.id).subscribe(
+                selectedAsset.combineOffers(sellOffer.id, buyOffer.id).subscribe(
                     txHash => {
                         sellOffer.shares -= (parseInt(sellOffer.shares) >= parseInt(buyOffer.shares) ? buyOffer.shares : sellOffer.shares);
                         sellShares(sellOffer, autocompleteOn, buyIdx + 1);
@@ -102,7 +136,7 @@ function App() {
         } else {
             if (sellOffer.id == null && sellOffer.shares != 0) {
                 // some shares remained unsold, publish sell offer
-                api.offerToSell(sellOffer.shares, sellOffer.price, sellOffer.buyer).toPromise();
+                selectedAsset.offerToSell(sellOffer.shares, sellOffer.price, sellOffer.buyer).toPromise();
             }
         }
     }
@@ -120,7 +154,7 @@ function App() {
             if (buyOffer.buyer == sellOffer.seller)
                 return buyShares(buyOffer, autocompleteOn, sellIdx + 1);
 
-             // skip offers where seller is not the intended seller
+            // skip offers where seller is not the intended seller
             if (buyOffer.seller != anyAddress && buyOffer.seller != sellOffer.seller)
                 return buyShares(buyOffer, autocompleteOn, sellIdx + 1);
 
@@ -130,7 +164,7 @@ function App() {
 
             if (buyOffer.id == null) { // no existing buy offer, just complete sell offers
                 const sharesToBuy = (parseInt(buyOffer.shares) >= parseInt(sellOffer.shares) ? sellOffer.shares : buyOffer.shares);
-                api.buyShares(sellOffer.id, sharesToBuy, {'value': sharesToBuy * sellOffer.price}).subscribe(
+                selectedAsset.buyShares(sellOffer.id, sharesToBuy, {'value': sharesToBuy * sellOffer.price}).subscribe(
                     txHash => {
                         buyOffer.shares -= sharesToBuy;
                         buyShares(buyOffer, autocompleteOn, sellIdx + 1);
@@ -138,7 +172,7 @@ function App() {
                     err => console.log(err)
                 );
             } else { // existing buy offer, combine offers
-                api.combineOffers(sellOffer.id, buyOffer.id).subscribe(
+                selectedAsset.combineOffers(sellOffer.id, buyOffer.id).subscribe(
                     txHash => {
                         buyOffer.shares -= (parseInt(buyOffer.shares) >= parseInt(sellOffer.shares) ? sellOffer.shares : buyOffer.shares);
                         buyShares(buyOffer, autocompleteOn, sellIdx + 1);
@@ -149,23 +183,207 @@ function App() {
         } else {
             if (buyOffer.id == null && buyOffer.shares != 0) {
                 // some shares remained unsold, publish sell offer
-                api.offerToBuy(buyOffer.shares, buyOffer.price, buyOffer.seller, {'value': buyOffer.shares * buyOffer.price}).toPromise();
+                selectedAsset.offerToBuy(buyOffer.shares, buyOffer.price, buyOffer.seller, {'value': buyOffer.shares * buyOffer.price}).toPromise();
             }
         }
+    }
+
+    function dateToUnixTimestamp(date) {
+        return Math.floor(date.getTime() / 1000);
+    }
+
+    function displayDate(unixTime) {
+        let date = new Date(unixTime * 1000);
+        let year = date.getFullYear();
+        let month = toDoubleDigits(1 + date.getMonth());
+        let day = toDoubleDigits(date.getDate());
+        let hour = toDoubleDigits(date.getHours());
+        let minute = toDoubleDigits(date.getMinutes());
+
+        return '' + day + '.' + month + '.' + year + ' ' + hour + ':' + minute;
+    }
+
+    function toDoubleDigits(n) {
+        if (n > 9) return n;
+        return '0' + n;
+    }
+
+    function proposalDescription(functionId, uintArg, stringArg, addressArg) {
+        switch (functionId) {
+            case functionIds.CHANGE_APPROVAL_TRESHOLD:
+                return 'Change proposal approval threshold from '
+                       + amountToPercentage(proposalApprovalThreshold, TOTAL_SHARES)
+                       + '% to '
+                       + amountToPercentage(uintArg, TOTAL_SHARES)
+                       + '%.';
+            case functionIds.CHANGE_ASSET_DESCRIPTION:
+                return 'Change asset description to\n\"'
+                       + stringArg
+                       + '\".';
+            case functionIds.CHANGE_PAYOUT_PERIOD:
+                return 'Change payout period from '
+                       + payoutPeriod
+                       + ' seconds to '
+                       + uintArg
+                       + ' seconds.';
+            case functionIds.CHANGE_TREASURY_RATIO:
+                return 'Change the percentage of income placed in the treasury from '
+                       + amountToPercentage(treasuryRatio, TREASURY_RATIO_DENOMINATOR)
+                       + '% to '
+                       + amountToPercentage(uintArg, TREASURY_RATIO_DENOMINATOR)
+                       + '%.';
+            case functionIds.EXECUTE_EXTERNAL_CONTRACT:
+                return 'Pay '
+                       + uintArg
+                       + ' wei to call function '
+                       + stringArg
+                       + ' of contract '
+                       + displayAddress(addressArg)
+                       + '.';
+            case functionIds.ORIGINAL:
+                return stringArg;
+            case functionIds.SEND_MONEY:
+                return 'Transfer '
+                       + uintArg
+                       + ' wei to '
+                       + displayAddress(addressArg)
+                       + '.';
+        }
+        return '';
     }
 
     let selectedView;
 
     switch (selectedTab) {
-        case 0: //Payments
+        case 0: //Asset Registry
             selectedView = (
                 <Box>
-                    TreasuryBalance: {treasuryBalance} <br/>
-                    Funds: {funds} <br/>
+                    Asset description: <TextInput
+                        value={description}
+                        onChange={event => setDescription(event.target.value)}
+                    /> <br/>
+                    <Button
+                        display="label"
+                        label="Publish"
+                        onClick={() => api.createAsset(description).toPromise()}
+                    />
+                    <DataView
+                        display="table"
+                        fields={['Address', 'Select']}
+                        entries={sharedAssets}
+                        renderEntry={(address) => {
+                            return [
+                                displayAddress(address),
+                                <Button
+                                    display="label"
+                                    label="Select"
+                                    onClick={() => {
+                                        if (assetEventSubscription != null) {
+                                            assetEventSubscription.unsubscribe();
+                                        }
 
-                    Amount (wei): <TextInput.Number
+                                        const asset = api.external(address, assetJsonInterface);
+
+                                        api.emitTrigger('ASSET_SELECTED', {address});
+                                        setSelectedAsset(asset);
+                                        setAssetEventSubscription(asset.events().subscribe(({event, returnValues, address}) => {
+                                            api.emitTrigger(event, { ...returnValues, contractAddress: address });
+                                        }));
+                                    }}
+                                />
+                            ]
+                        }}
+                    />
+                </Box>
+            );
+            break;
+        case 1: //Asset Description
+            selectedView = (
+                <Box>{assetDescription}</Box>
+            );
+            break;
+        case 2: //Your Profile
+            selectedView = (
+                <Box>
+                    Address: {displayAddress(currentUser)} <br/>
+                    Shares: TODO <br/>
+                    Unclaimed Revenue: TODO <br/>
+                    Supported Proposals: <br/>
+                    <DataView
+                        display="table"
+                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Increase Support', 'Revoke Support', 'Implement', 'Cancel', 'Remove']}
+                        entries={supportedProposals}
+                        renderEntry={({id, idx, owner, reason, completionDate, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
+
+                            let active = (completionDate == 0) && (expirationDate > dateToUnixTimestamp(new Date()));
+
+                            return [
+                                id,
+                                displayAddress(owner),
+                                proposalDescription(functionId, uintArg, stringArg, addressArg),
+                                reason,
+                                amountToPercentage(support, TOTAL_SHARES),
+                                displayDate(expirationDate),
+                                (active ?
+                                    <Button
+                                        display="label"
+                                        label="Increase Support"
+                                        onClick={() => selectedAsset.supportProposal(id).toPromise()}
+                                    />
+                                    :
+                                    '-'
+                                ),
+                                (active ?
+                                    <Button
+                                        display="label"
+                                        label="Revoke Support"
+                                        onClick={() => selectedAsset.revokeProposalSupport(id).toPromise()}
+                                    />
+                                    :
+                                    '-'
+                                ),
+                                (active ?
+                                    <Button
+                                        display="label"
+                                        label="Implement"
+                                        onClick={() => selectedAsset.executeProposal(id).toPromise()}
+                                    />
+                                    :
+                                    '-'
+                                ),
+                                (active ?
+                                    <Button
+                                        display="label"
+                                        label="Cancel"
+                                        onClick={() => selectedAsset.cancelProposal(id).toPromise()}
+                                    />
+                                    :
+                                    '-'
+                                ),
+                                (active ?
+                                    '-'
+                                    :
+                                    <Button
+                                        display="label"
+                                        label="Remove"
+                                        onClick={() => selectedAsset.removeInactiveSupportedProposalByIndex(idx).toPromise()}
+                                    />
+                                )
+                            ]
+                        }}
+                    />
+                </Box>
+            );
+            break;
+        case 3: //Payments
+            selectedView = (
+                <Box>
+                    Treasury balance: {weiToEth(treasuryBalance)} eth <br/>
+                    Funds: {weiToEth(funds)} eth <br/>
+
+                    Amount (eth): <TextInput.Number
                         value={amount}
-                        onChange={event => setAmount(parseInt(event.target.value), 10)}
+                        onChange={event => setAmount(event.target.value)}
                     /> <br/>
                     Message: <TextInput
                         value={message}
@@ -175,23 +393,23 @@ function App() {
                         <Button
                             display="label"
                             label="Make payment"
-                            onClick={() => api.payment(message, {'value': amount}).toPromise()}
+                            onClick={() => selectedAsset.payment(message, {'value': ethToWei(parseFloat(amount))}).toPromise()}
                         />
                         <Button
                             display="label"
                             label="Deposit to treasury"
-                            onClick={() => api.treasuryDeposit(message, {'value': amount}).toPromise()}
+                            onClick={() => selectedAsset.treasuryDeposit(message, {'value': ethToWei(parseFloat(amount))}).toPromise()}
                         />
                         <Button
                             display="label"
                             label="Distribute revenue"
-                            onClick={() => api.payOwners().toPromise()}
+                            onClick={() => selectedAsset.payOwners().toPromise()}
                         />
                     </Buttons>
                 </Box>
             );
             break;
-        case 1: //Owners
+        case 4: //Owners
             selectedView = (
                 <Box>
                     <DataView
@@ -199,13 +417,13 @@ function App() {
                         fields={['Address', 'Shares (%)', 'Shares on Sale (%)']}
                         entries={owners}
                         renderEntry={({address, shares, sharesOnSale}) => {
-                            return [displayAddress(address), sharesToPercentage(shares), sharesToPercentage(sharesOnSale)]
+                            return [displayAddress(address), amountToPercentage(shares, TOTAL_SHARES), amountToPercentage(sharesOnSale, TOTAL_SHARES)]
                         }}
                     />
                 </Box>
             );
             break;
-        case 2: //Offers
+        case 5: //Offers
 
             let activeOffersView;
 
@@ -225,7 +443,7 @@ function App() {
                                     id,
                                     displayAddress(seller),
                                     displayAddress(buyer),
-                                    sharesToPercentage(shares),
+                                    amountToPercentage(shares, TOTAL_SHARES),
                                     weiToEth(calcPartialPrice(partialShares[id], price)),
                                     <TextInput.Number
                                         value={partialShares[id]}
@@ -234,13 +452,13 @@ function App() {
                                     <Button
                                         display="label"
                                         label="Buy"
-                                        onClick={() => api.buyShares(id, percentageToShares(partialShares[id]), {'value': calcPartialPrice(partialShares[id], price)}).toPromise()}
+                                        onClick={() => selectedAsset.buyShares(id, percentageToAmount(partialShares[id], TOTAL_SHARES), {'value': calcPartialPrice(partialShares[id], price)}).toPromise()}
                                     />,
                                     <Button
                                         display="label"
                                         label="Autocomplete"
                                         onClick={() => {
-                                            if (connectedAccount != seller) {
+                                            if (currentUser != seller) {
                                                 console.log('Error: Only the offer owner can autocomplete it.');
                                                 return;
                                             }
@@ -250,7 +468,7 @@ function App() {
                                     <Button
                                         display="label"
                                         label="Cancel"
-                                        onClick={() => api.cancelOffer(id).toPromise()}
+                                        onClick={() => selectedAsset.cancelOffer(id).toPromise()}
                                     />
                                 ]
                             }}
@@ -272,7 +490,7 @@ function App() {
                                     id,
                                     displayAddress(buyer),
                                     displayAddress(seller),
-                                    sharesToPercentage(shares),
+                                    amountToPercentage(shares, TOTAL_SHARES),
                                     weiToEth(calcPartialPrice(partialShares[id], price)),
                                     <TextInput.Number
                                         value={partialShares[id]}
@@ -281,13 +499,13 @@ function App() {
                                     <Button
                                         display="label"
                                         label="Sell"
-                                        onClick={() => api.sellShares(id, percentageToShares(partialShares[id])).toPromise()}
+                                        onClick={() => selectedAsset.sellShares(id, percentageToAmount(partialShares[id], TOTAL_SHARES)).toPromise()}
                                     />,
                                     <Button
                                         display="label"
                                         label="Autocomplete"
                                         onClick={() => {
-                                            if (connectedAccount != buyer) {
+                                            if (currentUser != buyer) {
                                                 console.log('Error: Only the offer owner can autocomplete it.');
                                                 return;
                                             }
@@ -297,7 +515,7 @@ function App() {
                                     <Button
                                         display="label"
                                         label="Cancel"
-                                        onClick={() => api.cancelOffer(id).toPromise()}
+                                        onClick={() => selectedAsset.cancelOffer(id).toPromise()}
                                     />
                                 ]
                             }}
@@ -308,17 +526,17 @@ function App() {
             selectedView = (
                 <Box>
                     Shares (%): <TextInput.Number
-                        value={shares}
-                        onChange={event => setShares(event.target.value)}
-                    /> <br/>
+                    value={shares}
+                    onChange={event => setShares(event.target.value)}
+                /> <br/>
                     Price (eth / %): <TextInput.Number
-                        value={price}
-                        onChange={event => setPrice(event.target.value)}
-                    /> <br/>
+                    value={price}
+                    onChange={event => setPrice(event.target.value)}
+                /> <br/>
                     Intended buyer / seller: <TextInput
-                        value={intendedParty}
-                        onChange={event => setIntendedParty(event.target.value)}
-                    /> <br/>
+                    value={intendedParty}
+                    onChange={event => setIntendedParty(event.target.value)}
+                /> <br/>
                     <Checkbox
                         checked={autocompleteCheck}
                         onChange={setAutocompleteCheck}
@@ -328,24 +546,24 @@ function App() {
                             display="label"
                             label="Offer to sell"
                             onClick={() => sellShares({
-                                    id: null,
-                                    seller: connectedAccount,
-                                    buyer: (intendedParty ? intendedParty : anyAddress),
-                                    shares: percentageToShares(parseFloat(shares)),
-                                    price: ethPerPercentageToWeiPerShare(price)
-                                }, autocompleteCheck)
+                                id: null,
+                                seller: currentUser,
+                                buyer: (intendedParty ? intendedParty : anyAddress),
+                                shares: percentageToAmount(parseFloat(shares), TOTAL_SHARES),
+                                price: ethPerPercentageToWeiPerShare(price)
+                            }, autocompleteCheck)
                             }
                         />
                         <Button
                             display="label"
                             label="Offer to buy"
                             onClick={() => buyShares({
-                                    id: null,
-                                    seller: (intendedParty ? intendedParty : anyAddress),
-                                    buyer: connectedAccount,
-                                    shares: percentageToShares(parseFloat(shares)),
-                                    price: ethPerPercentageToWeiPerShare(price)
-                                }, autocompleteCheck)
+                                id: null,
+                                seller: (intendedParty ? intendedParty : anyAddress),
+                                buyer: currentUser,
+                                shares: percentageToAmount(parseFloat(shares), TOTAL_SHARES),
+                                price: ethPerPercentageToWeiPerShare(price)
+                            }, autocompleteCheck)
                             }
                         />
                     </Buttons>
@@ -358,11 +576,301 @@ function App() {
                 </Box>
             )
             break;
-        case 3: //Proposals
+        case 6: //Proposals
+
+            let proposalForm;
+
+            switch ('' + selectedProposalFunction) {
+                case functionIds.CHANGE_APPROVAL_TRESHOLD:
+                    proposalForm = (
+                        <div>
+                            Current value: {amountToPercentage(proposalApprovalThreshold, TOTAL_SHARES)} % <br/>
+                            New value: <TextInput.Number
+                            value={newApprovalThreshold}
+                            onChange={event => setNewApprovalThreshold(event.target.value)}
+                        /> % <br/>
+                            Reason: <TextInput
+                            value={proposalReason}
+                            onChange={event => setProposalReason(event.target.value)}
+                        /> <br/>
+                            End date (UNIX): <TextInput.Number
+                            value={endDate}
+                            onChange={event => setEndDate(event.target.value)}
+                        /> <br/>
+                            <Button
+                                display="label"
+                                label="Make proposal"
+                                onClick={() =>
+                                    selectedAsset.makeProposal(
+                                        proposalReason,
+                                        parseInt(endDate),
+                                        functionIds.CHANGE_APPROVAL_TRESHOLD,
+                                        percentageToAmount(parseFloat(newApprovalThreshold, 10), TOTAL_SHARES),
+                                        '',
+                                        anyAddress
+                                    ).toPromise()
+                                }
+                            />
+                        </div>
+                    );
+                    break;
+                case functionIds.CHANGE_ASSET_DESCRIPTION:
+                    proposalForm = (
+                        <div>
+                            New description:<br/>
+                            <TextInput
+                                value={newAssetDescription}
+                                onChange={event => setNewAssetDescription(event.target.value)}
+                            /> <br/>
+                            Reason: <TextInput
+                            value={proposalReason}
+                            onChange={event => setProposalReason(event.target.value)}
+                        /> <br/>
+                            End date (UNIX): <TextInput.Number
+                            value={endDate}
+                            onChange={event => setEndDate(event.target.value)}
+                        /> <br/>
+                            <Button
+                                display="label"
+                                label="Make proposal"
+                                onClick={() =>
+                                    selectedAsset.makeProposal(
+                                        proposalReason,
+                                        parseInt(endDate),
+                                        functionIds.CHANGE_ASSET_DESCRIPTION,
+                                        0,
+                                        newAssetDescription,
+                                        anyAddress
+                                    ).toPromise()
+                                }
+                            />
+                        </div>
+                    );
+                    break;
+                case functionIds.CHANGE_PAYOUT_PERIOD:
+                    proposalForm = (
+                        <div>
+                            Current value: {payoutPeriod} seconds <br/>
+                            New value: <TextInput.Number
+                            value={newPayoutPeriod}
+                            onChange={event => setNewPayoutPeriod(event.target.value)}
+                        /> seconds <br/>
+                            Reason: <TextInput
+                            value={proposalReason}
+                            onChange={event => setProposalReason(event.target.value)}
+                        /> <br/>
+                            End date (UNIX): <TextInput.Number
+                            value={endDate}
+                            onChange={event => setEndDate(event.target.value)}
+                        /> <br/>
+                            <Button
+                                display="label"
+                                label="Make proposal"
+                                onClick={() =>
+                                    selectedAsset.makeProposal(
+                                        proposalReason,
+                                        parseInt(endDate),
+                                        functionIds.CHANGE_PAYOUT_PERIOD,
+                                        parseInt(newPayoutPeriod, 10),
+                                        '',
+                                        anyAddress
+                                    ).toPromise()
+                                }
+                            />
+                        </div>
+                    );
+                    break;
+                case functionIds.CHANGE_TREASURY_RATIO:
+                    proposalForm = (
+                        <div>
+                            Current value: {amountToPercentage(treasuryRatio, TREASURY_RATIO_DENOMINATOR)} % <br/>
+                            New value: <TextInput.Number
+                            value={newTreasuryRatio}
+                            onChange={event => setNewTreasuryRatio(event.target.value)}
+                        /> % <br/>
+                            Reason: <TextInput
+                            value={proposalReason}
+                            onChange={event => setProposalReason(event.target.value)}
+                        /> <br/>
+                            End date (UNIX): <TextInput.Number
+                            value={endDate}
+                            onChange={event => setEndDate(event.target.value)}
+                        /> <br/>
+                            <Button
+                                display="label"
+                                label="Make proposal"
+                                onClick={() =>
+                                    selectedAsset.makeProposal(
+                                        proposalReason,
+                                        parseInt(endDate),
+                                        functionIds.CHANGE_TREASURY_RATIO,
+                                        percentageToAmount(parseFloat(newTreasuryRatio, 10), TREASURY_RATIO_DENOMINATOR),
+                                        '',
+                                        anyAddress
+                                    ).toPromise()
+                                }
+                            />
+                        </div>
+                    );
+                    break;
+                case functionIds.EXECUTE_EXTERNAL_CONTRACT:
+                    proposalForm = (
+                        <div>
+                            Contract address: <TextInput
+                            value={contractAddress}
+                            onChange={event => setContractAddress(event.target.value)}
+                        /> <br/>
+                            Function signature: <TextInput
+                            value={functionSignature}
+                            onChange={event => setFunctionSignature(event.target.value)}
+                        /> <br/>
+                            Payment amount: <TextInput.Number
+                            value={amountToSendInCall}
+                            onChange={event => setAmountToSendInCall(event.target.value)}
+                        /> eth <br/>
+                            Reason: <TextInput
+                            value={proposalReason}
+                            onChange={event => setProposalReason(event.target.value)}
+                        /> <br/>
+                            End date (UNIX): <TextInput.Number
+                            value={endDate}
+                            onChange={event => setEndDate(event.target.value)}
+                        /> <br/>
+                            <Button
+                                display="label"
+                                label="Make proposal"
+                                onClick={() =>
+                                    selectedAsset.makeProposal(
+                                        proposalReason,
+                                        parseInt(endDate),
+                                        functionIds.EXECUTE_EXTERNAL_CONTRACT,
+                                        ethToWei(parseFloat(amountToSendInCall)),
+                                        functionSignature,
+                                        contractAddress
+                                    ).toPromise()
+                                }
+                            />
+                        </div>
+                    );
+                    break;
+                case functionIds.ORIGINAL:
+                    proposalForm = (
+                        <div>
+                            Proposal:<br/>
+                            <TextInput
+                                value={proposalText}
+                                onChange={event => setProposalText(event.target.value)}
+                            /> <br/>
+                            Reason: <TextInput
+                            value={proposalReason}
+                            onChange={event => setProposalReason(event.target.value)}
+                        /> <br/>
+                            End date (UNIX): <TextInput.Number
+                            value={endDate}
+                            onChange={event => setEndDate(event.target.value)}
+                        /> <br/>
+                            <Button
+                                display="label"
+                                label="Make proposal"
+                                onClick={() =>
+                                    selectedAsset.makeProposal(
+                                        proposalReason,
+                                        parseInt(endDate),
+                                        functionIds.ORIGINAL,
+                                        0,
+                                        proposalText,
+                                        anyAddress
+                                    ).toPromise()
+                                }
+                            />
+                        </div>
+                    );
+                    break;
+                case functionIds.SEND_MONEY:
+                    proposalForm = (
+                        <div>
+                            Address: <TextInput
+                            value={addressToSend}
+                            onChange={event => setAddressToSend(event.target.value)}
+                        /> <br/>
+                            Amount to send: <TextInput.Number
+                            value={amountToSend}
+                            onChange={event => setAmountToSend(event.target.value)}
+                        /> eth <br/>
+                            Reason: <TextInput
+                            value={proposalReason}
+                            onChange={event => setProposalReason(event.target.value)}
+                        /> <br/>
+                            End date (UNIX): <TextInput.Number
+                            value={endDate}
+                            onChange={event => setEndDate(event.target.value)}
+                        /> <br/>
+                            <Button
+                                display="label"
+                                label="Make proposal"
+                                onClick={() =>
+                                    selectedAsset.makeProposal(
+                                        proposalReason,
+                                        parseInt(endDate),
+                                        functionIds.SEND_MONEY,
+                                        ethToWei(parseFloat(amountToSend)),
+                                        '',
+                                        addressToSend
+                                    ).toPromise()
+                                }
+                            />
+                        </div>
+                    );
+            }
+
             selectedView = (
                 <Box>
+                    Select proposal function: <DropDown
+                    items={[
+                        'Change proposal approval threshold.',
+                        'Change asset description.',
+                        'Change payout period.',
+                        'Change percentage of income placed in the treasury.',
+                        'Call the function of another contract using treasury funds.',
+                        'Free-form proposal.',
+                        'Send money from the treasury to an address.'
+                    ]}
+                    selected={selectedProposalFunction}
+                    onChange={setSelectedProposalFunction}
+                /> <br/>
+                    {proposalForm}
+                    <DataView
+                        display="table"
+                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Agree', 'Implement', 'Cancel']}
+                        entries={proposals}
+                        renderEntry={({id, owner, reason, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
+                            return [
+                                id,
+                                displayAddress(owner),
+                                proposalDescription(functionId, uintArg, stringArg, addressArg),
+                                reason,
+                                amountToPercentage(support, TOTAL_SHARES),
+                                displayDate(expirationDate),
+                                <Button
+                                    display="label"
+                                    label="Agree"
+                                    onClick={() => selectedAsset.supportProposal(id).toPromise()}
+                                />,
+                                <Button
+                                    display="label"
+                                    label="Implement"
+                                    onClick={() => selectedAsset.executeProposal(id).toPromise()}
+                                />,
+                                <Button
+                                    display="label"
+                                    label="Cancel"
+                                    onClick={() => selectedAsset.cancelProposal(id).toPromise()}
+                                />
+                            ]
+                        }}
+                    />
                 </Box>
-            )
+            );
     }
 
     return (
@@ -372,7 +880,7 @@ function App() {
                 primary="AssetShare"
             />
             <Tabs
-                items={['Payments', 'Owners', 'Offers', 'Proposals']}
+                items={['Asset Registry', 'Asset Description', 'Your Profile', 'Payments', 'Owners', 'Offers', 'Proposals']}
                 selected={selectedTab}
                 onChange={setSelectedTab}
             />
@@ -380,7 +888,6 @@ function App() {
         </Main>
     )
 }
-
 
 const Buttons = styled.div`
   display: grid;
