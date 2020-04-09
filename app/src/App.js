@@ -11,7 +11,7 @@ import {
     IdentityBadge,
     Main,
     SyncIndicator,
-    Tabs,
+    Tabs, Text,
     TextInput,
     textStyle
 } from '@aragon/ui'
@@ -586,7 +586,9 @@ function App() {
                     proposalForm = (
                         <div>
                             Current value:
-                            {amountToPercentage(proposalApprovalThreshold, TOTAL_SHARES)} %
+                            <Text
+                                css={`margin-left:80px;`}
+                            >{amountToPercentage(proposalApprovalThreshold, TOTAL_SHARES)}%</Text>
                             <br/>
 
                             New value: <TextInput
@@ -609,7 +611,7 @@ function App() {
                         />
                         <br/>
                             <Button
-                                css={`margin-left:120px;`}
+                                css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
@@ -648,6 +650,8 @@ function App() {
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
                             <Button
+                                css={`margin-left:180px;`}
+
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
@@ -667,7 +671,8 @@ function App() {
                 case functionIds.CHANGE_PAYOUT_PERIOD:
                     proposalForm = (
                         <div>
-                            Current value: {payoutPeriod} seconds <br/>
+                            Current value: <Text css={`margin-left:80px;`}
+                        >{payoutPeriod} seconds </Text><br/>
                             New value: <TextInput
                             css={`margin-left:100px;`}
                             type="number"
@@ -686,6 +691,7 @@ function App() {
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
                             <Button
+                                css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
@@ -705,7 +711,8 @@ function App() {
                 case functionIds.CHANGE_TREASURY_RATIO:
                     proposalForm = (
                         <div>
-                            Current value: {amountToPercentage(treasuryRatio, TREASURY_RATIO_DENOMINATOR)} % <br/>
+                            Current value: <Text                                css={`margin-left:80px;`}
+                        >{amountToPercentage(treasuryRatio, TREASURY_RATIO_DENOMINATOR)}</Text> % <br/>
                             New value: <TextInput
                             css={`margin-left:100px;`}
                             type="number"
@@ -724,6 +731,7 @@ function App() {
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
                             <Button
+                                css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
@@ -772,6 +780,7 @@ function App() {
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
                             <Button
+                                css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
@@ -809,6 +818,7 @@ function App() {
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
                             <Button
+                                css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
@@ -851,6 +861,7 @@ function App() {
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
                             <Button
+                                css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
