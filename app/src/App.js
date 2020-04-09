@@ -585,22 +585,31 @@ function App() {
                 case functionIds.CHANGE_APPROVAL_TRESHOLD:
                     proposalForm = (
                         <div>
-                            Current value: {amountToPercentage(proposalApprovalThreshold, TOTAL_SHARES)} % <br/>
-                            New value: <TextInput.Number
+                            Current value:
+                            {amountToPercentage(proposalApprovalThreshold, TOTAL_SHARES)} %
+                            <br/>
+
+                            New value: <TextInput
+                            css={`margin-left:100px;`}
+                            type="number"
                             value={newApprovalThreshold}
                             onChange={event => setNewApprovalThreshold(event.target.value)}
                         /> % <br/>
                             Reason: <TextInput
+                            css={`margin-left:120px;`}
                             value={proposalReason}
                             onChange={event => setProposalReason(event.target.value)}
                         /> <br/>
                             End date (UNIX):
 
-                        <TextInput type="date" value={endDate}
+                        <TextInput
+                            css={`margin-left:65px;`}
+                            type="date" value={endDate}
                                 onChange={event => setEndDate(event.target.value)}
                         />
                         <br/>
                             <Button
+                                css={`margin-left:120px;`}
                                 display="label"
                                 label="Make proposal"
                                 onClick={() =>
@@ -620,16 +629,21 @@ function App() {
                 case functionIds.CHANGE_ASSET_DESCRIPTION:
                     proposalForm = (
                         <div>
-                            New description:<br/>
+                            New description:
                             <TextInput
+                                css={`margin-left:60px;`}
                                 value={newAssetDescription}
                                 onChange={event => setNewAssetDescription(event.target.value)}
                             /> <br/>
                             Reason: <TextInput
+                            css={`margin-left:120px;`}
+
                             value={proposalReason}
                             onChange={event => setProposalReason(event.target.value)}
                         /> <br/>
-                            End date (UNIX): <TextInput.Number
+                            End date (UNIX): <TextInput
+                            css={`margin-left:60px;`}
+                            type="number"
                             value={endDate}
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
@@ -654,15 +668,20 @@ function App() {
                     proposalForm = (
                         <div>
                             Current value: {payoutPeriod} seconds <br/>
-                            New value: <TextInput.Number
+                            New value: <TextInput
+                            css={`margin-left:100px;`}
+                            type="number"
                             value={newPayoutPeriod}
                             onChange={event => setNewPayoutPeriod(event.target.value)}
                         /> seconds <br/>
                             Reason: <TextInput
+                            css={`margin-left:120px;`}
                             value={proposalReason}
                             onChange={event => setProposalReason(event.target.value)}
                         /> <br/>
-                            End date (UNIX): <TextInput.Number
+                            End date (UNIX): <TextInput
+                            css={`margin-left:60px;`}
+                            type="number"
                             value={endDate}
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
@@ -687,16 +706,21 @@ function App() {
                     proposalForm = (
                         <div>
                             Current value: {amountToPercentage(treasuryRatio, TREASURY_RATIO_DENOMINATOR)} % <br/>
-                            New value: <TextInput.Number
+                            New value: <TextInput
+                            css={`margin-left:100px;`}
+                            type="number"
                             value={newTreasuryRatio}
                             onChange={event => setNewTreasuryRatio(event.target.value)}
                         /> % <br/>
                             Reason: <TextInput
+                            css={`margin-left:120px;`}
                             value={proposalReason}
                             onChange={event => setProposalReason(event.target.value)}
                         /> <br/>
-                            End date (UNIX): <TextInput.Number
-                            value={endDate}
+                            End date (UNIX): <TextInput
+                            css={`margin-left:60px;`}
+                                type="number"
+                                value={endDate}
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
                             <Button
@@ -720,22 +744,30 @@ function App() {
                     proposalForm = (
                         <div>
                             Contract address: <TextInput
+                            css={`margin-left:50px;`}
                             value={contractAddress}
                             onChange={event => setContractAddress(event.target.value)}
                         /> <br/>
                             Function signature: <TextInput
+                            css={`margin-left:40px;`}
                             value={functionSignature}
                             onChange={event => setFunctionSignature(event.target.value)}
                         /> <br/>
-                            Payment amount: <TextInput.Number
+                            Payment amount: <TextInput
+                            css={`margin-left:50px;`}
+                            type="number"
                             value={amountToSendInCall}
                             onChange={event => setAmountToSendInCall(event.target.value)}
                         /> eth <br/>
                             Reason: <TextInput
+                            css={`margin-left:120px;`}
+
                             value={proposalReason}
                             onChange={event => setProposalReason(event.target.value)}
                         /> <br/>
-                            End date (UNIX): <TextInput.Number
+                            End date (UNIX): <TextInput
+                            css={`margin-left:60px;`}
+                            type="number"
                             value={endDate}
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
@@ -759,16 +791,20 @@ function App() {
                 case functionIds.ORIGINAL:
                     proposalForm = (
                         <div>
-                            Proposal:<br/>
+                            Proposal:
                             <TextInput
+                                css={`margin-left:115px;`}
                                 value={proposalText}
                                 onChange={event => setProposalText(event.target.value)}
                             /> <br/>
                             Reason: <TextInput
+                            css={`margin-left:120px;`}
                             value={proposalReason}
                             onChange={event => setProposalReason(event.target.value)}
                         /> <br/>
-                            End date (UNIX): <TextInput.Number
+                            End date (UNIX): <TextInput
+                            css={`margin-left:60px;`}
+                            type="number"
                             value={endDate}
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
@@ -793,18 +829,24 @@ function App() {
                     proposalForm = (
                         <div>
                             Address: <TextInput
+                            css={`margin-left:115px;`}
                             value={addressToSend}
                             onChange={event => setAddressToSend(event.target.value)}
                         /> <br/>
-                            Amount to send: <TextInput.Number
+                            Amount to send: <TextInput
+                            css={`margin-left:60px;`}
+                            type="number"
                             value={amountToSend}
                             onChange={event => setAmountToSend(event.target.value)}
                         /> eth <br/>
                             Reason: <TextInput
+                            css={`margin-left:120px;`}
                             value={proposalReason}
                             onChange={event => setProposalReason(event.target.value)}
                         /> <br/>
-                            End date (UNIX): <TextInput.Number
+                            End date (UNIX): <TextInput
+                            css={`margin-left:60px;`}
+                            type="number"
                             value={endDate}
                             onChange={event => setEndDate(event.target.value)}
                         /> <br/>
