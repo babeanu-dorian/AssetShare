@@ -63,7 +63,7 @@ function App() {
     const [amountToSend, setAmountToSend] = useState('');
     const [proposalText, setProposalText] = useState('');
     const [proposalReason, setProposalReason] = useState('');
-    const [endDate, setEndDate] = useState('' + new Date());
+    const [endDate, setEndDate] = useState(new Date().toISOString().split('.')[0]);
     const anyAddress = '0x0000000000000000000000000000000000000000';
     const weiInEth = 1000000000000000000.0;
 
@@ -80,7 +80,6 @@ function App() {
             }
         }
     }
-
 
     function ethToWei(amount) {
         return amount * weiInEth;
@@ -246,19 +245,19 @@ function App() {
                     + '%.';
             case functionIds.EXECUTE_EXTERNAL_CONTRACT:
                 return 'Pay '
-                    + uintArg
-                    + ' wei to call function '
+                    + weiToEth(uintArg)
+                    + ' eth to call function '
                     + stringArg
                     + ' of contract '
-                    + displayAddress(addressArg)
+                    + addressArg
                     + '.';
             case functionIds.ORIGINAL:
                 return stringArg;
             case functionIds.SEND_MONEY:
                 return 'Transfer '
-                    + uintArg
-                    + ' wei to '
-                    + displayAddress(addressArg)
+                    + weiToEth(uintArg)
+                    + ' eth to '
+                    + addressArg
                     + '.';
         }
         return '';
@@ -269,7 +268,7 @@ function App() {
     switch (selectedTab) {
         case 0: //Asset Registry
             selectedView = (
-                <Box>
+                <Box css={`width:100%;`}>
                     Asset description: <TextInput
                     value={description}
                     onChange={event => setDescription(event.target.value)}
@@ -295,6 +294,7 @@ function App() {
                                         }
 
                                         const asset = api.external(address, assetJsonInterface);
+                                        asset.address = address; // used to display selected asset
 
                                         api.emitTrigger('ASSET_SELECTED', {address});
                                         setSelectedAsset(asset);
@@ -321,15 +321,14 @@ function App() {
                     <Text css={`margin-left:90px`}>{displayAddress(currentUser)}</Text> <br/>
                     Shares:
                     <Text css={`margin-left:100px`} >
-                    {amountToPercentage(searchOwners(currentUser),TOTAL_SHARES)}
-
+                        {amountToPercentage(searchOwners(currentUser),TOTAL_SHARES)}
                     </Text>
                     % <br/>
                     Unclaimed Revenue: TODO <br/>
                     Supported Proposals:  <br/>
                     <DataView
                         display="table"
-                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Increase Support', 'Revoke Support', 'Implement', 'Cancel', 'Remove']}
+                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Actions']}
                         entries={supportedProposals}
                         renderEntry={({id, idx, owner, reason, completionDate, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
 
@@ -343,49 +342,34 @@ function App() {
                                 amountToPercentage(support, TOTAL_SHARES),
                                 displayDate(expirationDate),
                                 (active ?
+                                    <Buttons>
                                         <Button
                                             display="label"
                                             label="Increase Support"
                                             onClick={() => selectedAsset.supportProposal(id).toPromise()}
                                         />
-                                        :
-                                        '-'
-                                ),
-                                (active ?
                                         <Button
                                             display="label"
                                             label="Revoke Support"
                                             onClick={() => selectedAsset.revokeProposalSupport(id).toPromise()}
                                         />
-                                        :
-                                        '-'
-                                ),
-                                (active ?
                                         <Button
                                             display="label"
                                             label="Implement"
                                             onClick={() => selectedAsset.executeProposal(id).toPromise()}
                                         />
-                                        :
-                                        '-'
-                                ),
-                                (active ?
                                         <Button
                                             display="label"
                                             label="Cancel"
                                             onClick={() => selectedAsset.cancelProposal(id).toPromise()}
                                         />
-                                        :
-                                        '-'
-                                ),
-                                (active ?
-                                        '-'
-                                        :
-                                        <Button
-                                            display="label"
-                                            label="Remove"
-                                            onClick={() => selectedAsset.removeInactiveSupportedProposalByIndex(idx).toPromise()}
-                                        />
+                                    </Buttons>
+                                    :
+                                    <Button
+                                        display="label"
+                                        label="Remove"
+                                        onClick={() => selectedAsset.removeInactiveSupportedProposalByIndex(idx).toPromise()}
+                                    />
                                 )
                             ]
                         }}
@@ -396,22 +380,21 @@ function App() {
         case 3: //Payments
             selectedView = (
                 <Box>
-                    Treasury balance: <Text
-                    css={`margin-left:45px;`}>{weiToEth(treasuryBalance)} eth</Text> <br/>
-                    Funds: <Text
-                    css={`margin-left:124px;`}>{weiToEth(funds)} eth </Text><br/>
-
+                    Treasury balance:
+                    <Text css={`margin-left:45px;`}>{weiToEth(treasuryBalance)} eth</Text> <br/>
+                    Funds:
+                    <Text css={`margin-left:124px;`}>{weiToEth(funds)} eth </Text><br/>
                     Amount (eth): <TextInput
-                    css={`margin-left:60px;`}
-                    type="number"
-                    value={amount}
-                    onChange={event => setAmount(event.target.value)}
-                /> <br/>
+                        css={`margin-left:60px;`}
+                        type="number"
+                        value={amount}
+                        onChange={event => setAmount(event.target.value)}
+                    /> <br/>
                     Message: <TextInput
-                    css={`margin-left:93px;`}
-                    value={message}
-                    onChange={event => setMessage(event.target.value)}
-                /> <br/>
+                        css={`margin-left:93px;`}
+                        value={message}
+                        onChange={event => setMessage(event.target.value)}
+                    /> <br/>
                     <Buttons>
                         <Button
                             display="label"
@@ -476,11 +459,13 @@ function App() {
                                         })}
                                     />,
                                     <Button
+                                        size="small"
                                         display="label"
                                         label="Buy"
                                         onClick={() => selectedAsset.buyShares(id, percentageToAmount(partialShares[id], TOTAL_SHARES), {'value': calcPartialPrice(partialShares[id], price)}).toPromise()}
                                     />,
                                     <Button
+                                        size="small"
                                         display="label"
                                         label="Autocomplete"
                                         onClick={() => {
@@ -492,6 +477,7 @@ function App() {
                                         }}
                                     />,
                                     <Button
+                                        size="small"
                                         display="label"
                                         label="Cancel"
                                         onClick={() => selectedAsset.cancelOffer(id).toPromise()}
@@ -526,11 +512,13 @@ function App() {
                                         })}
                                     />,
                                     <Button
+                                        size="small"
                                         display="label"
                                         label="Sell"
                                         onClick={() => selectedAsset.sellShares(id, percentageToAmount(partialShares[id], TOTAL_SHARES)).toPromise()}
                                     />,
                                     <Button
+                                        size="small"
                                         display="label"
                                         label="Autocomplete"
                                         onClick={() => {
@@ -542,6 +530,7 @@ function App() {
                                         }}
                                     />,
                                     <Button
+                                        size="small"
                                         display="label"
                                         label="Cancel"
                                         onClick={() => selectedAsset.cancelOffer(id).toPromise()}
@@ -555,21 +544,21 @@ function App() {
             selectedView = (
                 <Box>
                     Shares (%): <TextInput
-                    css={`margin-left:83px;`}
-                    type="number"
-                    value={shares}
-                    onChange={event => setShares(event.target.value)}
-                /> <br/>
+                        css={`margin-left:83px;`}
+                        type="number"
+                        value={shares}
+                        onChange={event => setShares(event.target.value)}
+                    /> <br/>
                     Price (eth / %): <TextInput
-                    css={`margin-left:58px;`}
-                    type="number"
-                    value={price}
-                    onChange={event => setPrice(event.target.value)}
-                /> <br/>
+                        css={`margin-left:58px;`}
+                        type="number"
+                        value={price}
+                        onChange={event => setPrice(event.target.value)}
+                    /> <br/>
                     Intended buyer / seller: <TextInput
-                    value={intendedParty}
-                    onChange={event => setIntendedParty(event.target.value)}
-                /> <br/>
+                        value={intendedParty}
+                        onChange={event => setIntendedParty(event.target.value)}
+                    /> <br/>
                     <Checkbox
                         css={`margin-left:170px;`}
                         checked={autocompleteCheck}
@@ -619,30 +608,26 @@ function App() {
                     proposalForm = (
                         <div>
                             Current value:
-                            <Text
-                                css={`margin-left:80px;`}
-                            >{amountToPercentage(proposalApprovalThreshold, TOTAL_SHARES)}%</Text>
-                            <br/>
-
+                            <Text css={`margin-left:80px;`}>
+                                {amountToPercentage(proposalApprovalThreshold, TOTAL_SHARES)}%
+                            </Text> <br/>
                             New value: <TextInput
-                            css={`margin-left:100px;`}
-                            type="number"
-                            value={newApprovalThreshold}
-                            onChange={event => setNewApprovalThreshold(event.target.value)}
-                        /> % <br/>
+                                css={`margin-left:100px;`}
+                                type="number"
+                                value={newApprovalThreshold}
+                                onChange={event => setNewApprovalThreshold(event.target.value)}
+                            /> % <br/>
                             Reason: <TextInput
-                            css={`margin-left:120px;`}
-                            value={proposalReason}
-                            onChange={event => setProposalReason(event.target.value)}
-                        /> <br/>
-                            End date (UNIX):
-
-                            <TextInput
-                                css={`margin-left:65px;`}
-                                type="date" value={endDate}
+                                css={`margin-left:120px;`}
+                                value={proposalReason}
+                                onChange={event => setProposalReason(event.target.value)}
+                            /> <br/>
+                            End date: <TextInput
+                                css={`margin-left:105px;`}
+                                type="datetime-local"
+                                value={endDate}
                                 onChange={event => setEndDate(event.target.value)}
-                            />
-                            <br/>
+                            /> <br/>
                             <Button
                                 css={`margin-left:180px;`}
                                 display="label"
@@ -650,7 +635,7 @@ function App() {
                                 onClick={() =>
                                     selectedAsset.makeProposal(
                                         proposalReason,
-                                        parseInt(endDate),
+                                        dateToUnixTimestamp(new Date(endDate)),
                                         functionIds.CHANGE_APPROVAL_TRESHOLD,
                                         percentageToAmount(parseFloat(newApprovalThreshold, 10), TOTAL_SHARES),
                                         '',
@@ -664,24 +649,22 @@ function App() {
                 case functionIds.CHANGE_ASSET_DESCRIPTION:
                     proposalForm = (
                         <div>
-                            New description:
-                            <TextInput
+                            New description: <TextInput
                                 css={`margin-left:60px;`}
                                 value={newAssetDescription}
                                 onChange={event => setNewAssetDescription(event.target.value)}
                             /> <br/>
                             Reason: <TextInput
-                            css={`margin-left:120px;`}
-
-                            value={proposalReason}
-                            onChange={event => setProposalReason(event.target.value)}
-                        /> <br/>
-                            End date (UNIX): <TextInput
-                            css={`margin-left:60px;`}
-                            type="number"
-                            value={endDate}
-                            onChange={event => setEndDate(event.target.value)}
-                        /> <br/>
+                                css={`margin-left:120px;`}
+                                value={proposalReason}
+                                onChange={event => setProposalReason(event.target.value)}
+                            /> <br/>
+                            End date: <TextInput
+                                css={`margin-left:105px;`}
+                                type="datetime-local"
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 css={`margin-left:180px;`}
 
@@ -690,7 +673,7 @@ function App() {
                                 onClick={() =>
                                     selectedAsset.makeProposal(
                                         proposalReason,
-                                        parseInt(endDate),
+                                        dateToUnixTimestamp(new Date(endDate)),
                                         functionIds.CHANGE_ASSET_DESCRIPTION,
                                         0,
                                         newAssetDescription,
@@ -704,25 +687,25 @@ function App() {
                 case functionIds.CHANGE_PAYOUT_PERIOD:
                     proposalForm = (
                         <div>
-                            Current value: <Text css={`margin-left:80px;`}
-                        >{payoutPeriod} seconds </Text><br/>
+                            Current value:
+                            <Text css={`margin-left:80px;`}>{payoutPeriod} seconds </Text><br/>
                             New value: <TextInput
-                            css={`margin-left:100px;`}
-                            type="number"
-                            value={newPayoutPeriod}
-                            onChange={event => setNewPayoutPeriod(event.target.value)}
-                        /> seconds <br/>
+                                css={`margin-left:100px;`}
+                                type="number"
+                                value={newPayoutPeriod}
+                                onChange={event => setNewPayoutPeriod(event.target.value)}
+                            /> seconds <br/>
                             Reason: <TextInput
-                            css={`margin-left:120px;`}
-                            value={proposalReason}
-                            onChange={event => setProposalReason(event.target.value)}
-                        /> <br/>
-                            End date (UNIX): <TextInput
-                            css={`margin-left:60px;`}
-                            type="number"
-                            value={endDate}
-                            onChange={event => setEndDate(event.target.value)}
-                        /> <br/>
+                                css={`margin-left:120px;`}
+                                value={proposalReason}
+                                onChange={event => setProposalReason(event.target.value)}
+                            /> <br/>
+                            End date: <TextInput
+                                css={`margin-left:105px;`}
+                                type="datetime-local"
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 css={`margin-left:180px;`}
                                 display="label"
@@ -730,7 +713,7 @@ function App() {
                                 onClick={() =>
                                     selectedAsset.makeProposal(
                                         proposalReason,
-                                        parseInt(endDate),
+                                        dateToUnixTimestamp(new Date(endDate)),
                                         functionIds.CHANGE_PAYOUT_PERIOD,
                                         parseInt(newPayoutPeriod, 10),
                                         '',
@@ -744,25 +727,27 @@ function App() {
                 case functionIds.CHANGE_TREASURY_RATIO:
                     proposalForm = (
                         <div>
-                            Current value: <Text css={`margin-left:80px;`}
-                        >{amountToPercentage(treasuryRatio, TREASURY_RATIO_DENOMINATOR)}</Text> % <br/>
+                            Current value:
+                            <Text css={`margin-left:80px;`}>
+                                {amountToPercentage(treasuryRatio, TREASURY_RATIO_DENOMINATOR)} %
+                            </Text> <br/>
                             New value: <TextInput
-                            css={`margin-left:100px;`}
-                            type="number"
-                            value={newTreasuryRatio}
-                            onChange={event => setNewTreasuryRatio(event.target.value)}
-                        /> % <br/>
+                                css={`margin-left:100px;`}
+                                type="number"
+                                value={newTreasuryRatio}
+                                onChange={event => setNewTreasuryRatio(event.target.value)}
+                            /> % <br/>
                             Reason: <TextInput
-                            css={`margin-left:120px;`}
-                            value={proposalReason}
-                            onChange={event => setProposalReason(event.target.value)}
-                        /> <br/>
-                            End date (UNIX): <TextInput
-                            css={`margin-left:60px;`}
-                            type="number"
-                            value={endDate}
-                            onChange={event => setEndDate(event.target.value)}
-                        /> <br/>
+                                css={`margin-left:120px;`}
+                                value={proposalReason}
+                                onChange={event => setProposalReason(event.target.value)}
+                            /> <br/>
+                            End date: <TextInput
+                                css={`margin-left:105px;`}
+                                type="datetime-local"
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 css={`margin-left:180px;`}
                                 display="label"
@@ -770,7 +755,7 @@ function App() {
                                 onClick={() =>
                                     selectedAsset.makeProposal(
                                         proposalReason,
-                                        parseInt(endDate),
+                                        dateToUnixTimestamp(new Date(endDate)),
                                         functionIds.CHANGE_TREASURY_RATIO,
                                         percentageToAmount(parseFloat(newTreasuryRatio, 10), TREASURY_RATIO_DENOMINATOR),
                                         '',
@@ -785,33 +770,32 @@ function App() {
                     proposalForm = (
                         <div>
                             Contract address: <TextInput
-                            css={`margin-left:50px;`}
-                            value={contractAddress}
-                            onChange={event => setContractAddress(event.target.value)}
-                        /> <br/>
+                                css={`margin-left:50px;`}
+                                value={contractAddress}
+                                onChange={event => setContractAddress(event.target.value)}
+                            /> <br/>
                             Function signature: <TextInput
-                            css={`margin-left:40px;`}
-                            value={functionSignature}
-                            onChange={event => setFunctionSignature(event.target.value)}
-                        /> <br/>
+                                css={`margin-left:40px;`}
+                                value={functionSignature}
+                                onChange={event => setFunctionSignature(event.target.value)}
+                            /> <br/>
                             Payment amount: <TextInput
-                            css={`margin-left:50px;`}
-                            type="number"
-                            value={amountToSendInCall}
-                            onChange={event => setAmountToSendInCall(event.target.value)}
-                        /> eth <br/>
+                                css={`margin-left:50px;`}
+                                type="number"
+                                value={amountToSendInCall}
+                                onChange={event => setAmountToSendInCall(event.target.value)}
+                            /> eth <br/>
                             Reason: <TextInput
-                            css={`margin-left:120px;`}
-
-                            value={proposalReason}
-                            onChange={event => setProposalReason(event.target.value)}
-                        /> <br/>
-                            End date (UNIX): <TextInput
-                            css={`margin-left:60px;`}
-                            type="number"
-                            value={endDate}
-                            onChange={event => setEndDate(event.target.value)}
-                        /> <br/>
+                                css={`margin-left:120px;`}
+                                value={proposalReason}
+                                onChange={event => setProposalReason(event.target.value)}
+                            /> <br/>
+                            End date: <TextInput
+                                css={`margin-left:105px;`}
+                                type="datetime-local"
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 css={`margin-left:180px;`}
                                 display="label"
@@ -819,9 +803,9 @@ function App() {
                                 onClick={() =>
                                     selectedAsset.makeProposal(
                                         proposalReason,
-                                        parseInt(endDate),
+                                        dateToUnixTimestamp(new Date(endDate)),
                                         functionIds.EXECUTE_EXTERNAL_CONTRACT,
-                                        ethToWei(parseFloat(amountToSendInCall)),
+                                        '' + ethToWei(parseFloat(amountToSendInCall)),
                                         functionSignature,
                                         contractAddress
                                     ).toPromise()
@@ -840,16 +824,16 @@ function App() {
                                 onChange={event => setProposalText(event.target.value)}
                             /> <br/>
                             Reason: <TextInput
-                            css={`margin-left:120px;`}
-                            value={proposalReason}
-                            onChange={event => setProposalReason(event.target.value)}
-                        /> <br/>
-                            End date (UNIX): <TextInput
-                            css={`margin-left:60px;`}
-                            type="number"
-                            value={endDate}
-                            onChange={event => setEndDate(event.target.value)}
-                        /> <br/>
+                                css={`margin-left:120px;`}
+                                value={proposalReason}
+                                onChange={event => setProposalReason(event.target.value)}
+                            /> <br/>
+                            End date: <TextInput
+                                css={`margin-left:105px;`}
+                                type="datetime-local"
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 css={`margin-left:180px;`}
                                 display="label"
@@ -857,7 +841,7 @@ function App() {
                                 onClick={() =>
                                     selectedAsset.makeProposal(
                                         proposalReason,
-                                        parseInt(endDate),
+                                        dateToUnixTimestamp(new Date(endDate)),
                                         functionIds.ORIGINAL,
                                         0,
                                         proposalText,
@@ -872,27 +856,27 @@ function App() {
                     proposalForm = (
                         <div>
                             Address: <TextInput
-                            css={`margin-left:115px;`}
-                            value={addressToSend}
-                            onChange={event => setAddressToSend(event.target.value)}
-                        /> <br/>
+                                css={`margin-left:115px;`}
+                                value={addressToSend}
+                                onChange={event => setAddressToSend(event.target.value)}
+                            /> <br/>
                             Amount to send: <TextInput
-                            css={`margin-left:60px;`}
-                            type="number"
-                            value={amountToSend}
-                            onChange={event => setAmountToSend(event.target.value)}
-                        /> eth <br/>
+                                css={`margin-left:60px;`}
+                                type="number"
+                                value={amountToSend}
+                                onChange={event => setAmountToSend(event.target.value)}
+                            /> eth <br/>
                             Reason: <TextInput
-                            css={`margin-left:120px;`}
-                            value={proposalReason}
-                            onChange={event => setProposalReason(event.target.value)}
-                        /> <br/>
-                            End date (UNIX): <TextInput
-                            css={`margin-left:60px;`}
-                            type="number"
-                            value={endDate}
-                            onChange={event => setEndDate(event.target.value)}
-                        /> <br/>
+                                css={`margin-left:120px;`}
+                                value={proposalReason}
+                                onChange={event => setProposalReason(event.target.value)}
+                            /> <br/>
+                            End date: <TextInput
+                                css={`margin-left:105px;`}
+                                type="datetime-local"
+                                value={endDate}
+                                onChange={event => setEndDate(event.target.value)}
+                            /> <br/>
                             <Button
                                 css={`margin-left:180px;`}
                                 display="label"
@@ -900,9 +884,9 @@ function App() {
                                 onClick={() =>
                                     selectedAsset.makeProposal(
                                         proposalReason,
-                                        parseInt(endDate),
+                                        dateToUnixTimestamp(new Date(endDate)),
                                         functionIds.SEND_MONEY,
-                                        ethToWei(parseFloat(amountToSend)),
+                                        '' + ethToWei(parseFloat(amountToSend)),
                                         '',
                                         addressToSend
                                     ).toPromise()
@@ -941,16 +925,19 @@ function App() {
                                 amountToPercentage(support, TOTAL_SHARES),
                                 displayDate(expirationDate),
                                 <Button
+                                    size="small"
                                     display="label"
                                     label="Agree"
                                     onClick={() => selectedAsset.supportProposal(id).toPromise()}
                                 />,
                                 <Button
+                                    size="small"
                                     display="label"
                                     label="Implement"
                                     onClick={() => selectedAsset.executeProposal(id).toPromise()}
                                 />,
                                 <Button
+                                    size="small"
                                     display="label"
                                     label="Cancel"
                                     onClick={() => selectedAsset.cancelProposal(id).toPromise()}
@@ -964,16 +951,19 @@ function App() {
 
     return (
         <Main>
-            {isSyncing && <SyncIndicator/>}
-            <Header
-                primary="AssetShare"
-            />
-            <Tabs
-                items={['Asset Registry', 'Asset Description', 'Your Profile', 'Payments', 'Owners', 'Offers', 'Proposals']}
-                selected={selectedTab}
-                onChange={setSelectedTab}
-            />
-            {selectedView}
+            <div css={`margin-left:-180px; margin-right:-180px`}>
+                {isSyncing && <SyncIndicator/>}
+                <Header
+                    primary="AssetShare"
+                    secondary= {(selectedAsset ? displayAddress(selectedAsset.address) : '')}
+                />
+                <Tabs
+                    items={['Asset Registry', 'Asset Description', 'Your Profile', 'Payments', 'Owners', 'Offers', 'Proposals']}
+                    selected={selectedTab}
+                    onChange={setSelectedTab}
+                />
+                {selectedView}
+            </div>
         </Main>
     )
 }
@@ -981,7 +971,7 @@ function App() {
 const Buttons = styled.div`
   display: grid;
   grid-auto-flow: column;
-  grid-gap: 40px;
+  grid-gap: 10px;
   margin-top: 20px;
 `
 

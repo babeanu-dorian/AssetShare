@@ -124,8 +124,8 @@ function initializeState() {
             funds: 0,
             owners: [],
             offers: {
-            sellOffers: [],
-            buyOffers: []
+                sellOffers: [],
+                buyOffers: []
             },
             proposals: [],
             supportedProposals: []
