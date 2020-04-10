@@ -1,26 +1,12 @@
 pragma solidity 0.4.24;
 
 import "../contracts/AssetShareApp.sol";
+import "../test/SharedAssetTestHelper.sol";
 
 contract AssetShareAppTestHelper is AssetShareApp {
     
-    function callIncreaseShares(address ownerAddress, uint amount) external {
-        super.increaseShares(ownerAddress, amount);
-    }
-    
-    function callDecreaseShares(address ownerAddress, uint amount) external {
-        super.decreaseShares(ownerAddress, amount);
-    }
-    
-    function callTransferShares(address from, address to, uint sharesAmount) external {
-        super.transferShares(from, to, sharesAmount);
-    }
-    
-    function callAddOwner(address ownerAddress, uint shares) external {
-        super.addOwner(ownerAddress, shares);
-    }
-    
-    function callRemoveOwner(address ownerAddress) external {
-        super.removeOwner(ownerAddress);
+    function createAssetHelper(string description) external {
+        SharedAssetTestHelper asset = new SharedAssetTestHelper(msg.sender, description);
+        assetList.push(asset);
     }
 }
