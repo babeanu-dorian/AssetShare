@@ -4,7 +4,7 @@ const { assertRevert } = require('@aragon/test-helpers/assertThrow');
 const { hash } = require('eth-ens-namehash');
 const deployDAO = require('./helpers/deployDAO');
 
-const AssetShareApp = artifacts.require('AssetShareAppTestHelper.sol');
+const SharedAsset = artifacts.require('SharedAssetTestHelper.sol');
 const ANY_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 const getLog = (receipt, logName, argName) => {
@@ -14,33 +14,11 @@ const getLog = (receipt, logName, argName) => {
 
 const deployedContract = receipt => getLog(receipt, 'NewAppProxy', 'proxy');
 
-contract('AssetShareAppTestHelper', ([appManager, assetCreator, user1, user2]) => {
-    let appBase, app, asset;
-    
-    // eslint-disable-next-line no-undef
-    before('deploy base app', async () => {
-        // Deploy the app's base contract.
-        appBase = await AssetShareApp.new();
-    });
+contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]) => {
+    let asset;
     
     beforeEach('deploy dao and app', async () => {
-        const { dao, acl } = await deployDAO(appManager);
-        
-        // Instantiate a proxy for the app, using the base contract as its logic implementation.
-        const newAppInstanceReceipt = await dao.newAppInstance(
-            hash('foo.aragonpm.test'), // appId - Unique identifier for each app installed in the DAO; can be any bytes32 string in the tests.
-            appBase.address,           // appBase - Location of the app's base implementation.
-            '0x',                      // initializePayload - Used to instantiate and initialize the proxy in the same call (if given a non-empty bytes string).
-            false,                     // setDefault - Whether the app proxy is the default proxy.
-            { from: appManager }
-        );
-        app = await AssetShareApp.at(deployedContract(newAppInstanceReceipt));
-        
-        await app.initialize({from: appManager});
-        
-        // Create SharedAsset instance.
-        await app.createAssetHelper("TestAsset", {from: assetCreator});
-        asset = await app.getAssetByIdx(0);
+        asset = await SharedAsset.new(assetCreator, "TestAsset", {from: assetCreator});
     });
     
     /*
