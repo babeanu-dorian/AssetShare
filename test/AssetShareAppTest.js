@@ -389,4 +389,197 @@ contract('AssetShareAppTestHelper', ([appManager, assetCreator, user1, user2]) =
         var buyOffer = await asset.getOffer(0);
         assert.equal(buyOffer.cancelled, true);
     });
+    
+    /*
+     * Voting tests.
+     */
+    it('Create new proposal', async () => {
+        
+        // Assert that no proposals exist.
+        assert.equal(parseInt(await asset.getProposalsCount()), 0);
+        assert.equal(parseInt(await asset.getActiveProposalsCount()), 0);
+        
+        // Make a new proposal.
+        var currentTimeSec = Math.round(new Date().getTime() / 1000);
+        var reason = "reason";
+        var expTimeSec = currentTimeSec + 300;
+        var funcId = 1;
+        var uintArg = 0;
+        var stringArg = "";
+        var addressArg = ANY_ADDRESS;
+        await asset.makeProposal(reason, expTimeSec, funcId,
+                uintArg, stringArg, addressArg, {from: assetCreator});
+        
+        // Assert that a new active proposal exists.
+        assert.equal(parseInt(await asset.getProposalsCount()), 1);
+        assert.equal(parseInt(await asset.getActiveProposalsCount()), 1);
+        
+        // Assert that this new proposal matches the made proposal.
+        var proposal = await asset.getProposal(0);
+        assert.equal(proposal.id, 0);
+        assert.equal(proposal.owner, assetCreator);
+        assert.equal(proposal.reason, reason);
+        assert.equal(proposal.functionId, funcId);
+        assert.equal(proposal.uintArg, uintArg);
+        assert.equal(proposal.stringArg, stringArg);
+        assert.equal(proposal.addressArg, addressArg);
+        assert.equal(proposal.support, parseInt(await asset.getSharesByAddress(assetCreator)));
+        assert.equal(proposal.creationDate >= currentTime, true);
+        assert.equal(proposal.expirationDate, expTimeSec);
+        assert.equal(proposal.completionDate, 0);
+        assert.equal(proposal.cancelled, false);
+        
+        // Assert that the new proposal matches the new active proposal.
+        var activeProposal = await asset.getActiveProposalByIndex(0);
+        assert.equal(proposal, activeProposal);
+    });
+    
+    it('Cancel proposal', async () => {
+        
+        // Make a new proposal.
+        var currentTimeSec = Math.round(new Date().getTime() / 1000);
+        var reason = "reason";
+        var expTimeSec = currentTimeSec + 300;
+        var funcId = 1;
+        var uintArg = 0;
+        var stringArg = "";
+        var addressArg = ANY_ADDRESS;
+        await asset.makeProposal(reason, expTimeSec, funcId,
+                uintArg, stringArg, addressArg, {from: assetCreator});
+        
+        // Cancel proposal.
+        await asset.cancelProposal(0);
+        
+        // Assert that the proposal is cancelled and deactivated, but not removed from the proposals list.
+        var proposal = await asset.getProposal(0);
+        assert.equal(proposal.cancelled, true);
+        assert.equal(parseInt(await asset.getProposalsCount()), 1);
+        assert.equal(parseInt(await asset.getActiveProposalsCount()), 0);
+    });
+    
+    it('Support and revoke proposal', async () => {
+        
+        // Transfer shares from creator to user.
+        var TOTAL_SHARES = parseInt(await asset.TOTAL_SHARES());
+        var user1Shares = Math.floor(TOTAL_SHARES * 0.3);
+        var user2Shares = Math.floor(TOTAL_SHARES * 0.2);
+        var assetCreatorShares = TOTAL_SHARES - user1Shares - user2Shares;
+        await asset.callTransferShares(assetCreator, user1, user1Shares);
+        await asset.callTransferShares(assetCreator, user2, user2Shares);
+        
+        // Make a new proposal.
+        var currentTimeSec = Math.round(new Date().getTime() / 1000);
+        var reason = "reason";
+        var expTimeSec = currentTimeSec + 300;
+        var funcId = 1;
+        var uintArg = 0;
+        var stringArg = "";
+        var addressArg = ANY_ADDRESS;
+        await asset.makeProposal(reason, expTimeSec, funcId,
+                uintArg, stringArg, addressArg, {from: user1});
+        
+        // Assert that the proposal was generated with support from the proposal creator.
+        var proposal = await asset.getProposal(0);
+        assert.equal(proposal.support, user1Shares);
+        
+        // Add support from another user.
+        await asset.supportProposal(proposal.id, {from: assetCreator});
+        
+        // Assert that the proposal's support has increased.
+        proposal = await asset.getProposal(proposal.id);
+        assert.equal(proposal.support, user1Shares + assetCreatorShares);
+        
+        // Revoke support for the proposal.
+        await asset.revokeProposalSupport(proposal.id, {from: assetCreator});
+        
+        // Assert that the proposal's support has decreased.
+        proposal = await asset.getProposal(proposal.id);
+        assert.equal(proposal.support, user1Shares);
+    });
+    
+    // TODO - Test executeProposal for all possible proposal types.
+    it('Execute proposal CHANGE_APPROVAL_TRESHOLD', async () => {
+        
+        // Make a new proposal.
+        var currentTimeSec = Math.round(new Date().getTime() / 1000);
+        var reason = "reason";
+        var expTimeSec = currentTimeSec + 300;
+        var funcId = await asset.TaskFunction.CHANGE_APPROVAL_TRESHOLD();
+        var uintArg = 10;
+        var stringArg = "";
+        var addressArg = ANY_ADDRESS;
+        await asset.makeProposal(reason, expTimeSec, funcId,
+                uintArg, stringArg, addressArg, {from: assetCreator});
+        
+        // Execute the proposal.
+        await asset.executeProposal(0);
+        
+        // Assert that the approval threshold has changed.
+        assert.equal(await asset.getProposalApprovalThreshold(), uintArg);
+    });
+    
+    it('Execute proposal CHANGE_ASSET_DESCRIPTION', async () => {
+        
+        // Make a new proposal.
+        var currentTimeSec = Math.round(new Date().getTime() / 1000);
+        var reason = "reason";
+        var expTimeSec = currentTimeSec + 300;
+        var funcId = await asset.TaskFunction.CHANGE_ASSET_DESCRIPTION();
+        var uintArg = 0;
+        var stringArg = "NewDescription";
+        var addressArg = ANY_ADDRESS;
+        await asset.makeProposal(reason, expTimeSec, funcId,
+                uintArg, stringArg, addressArg, {from: assetCreator});
+        
+        // Execute the proposal.
+        await asset.executeProposal(0);
+        
+        // Assert that the asset description has changed.
+        assert.equal(await asset.getAssetDescription(), stringArg);
+    });
+    
+    it('Execute proposal CHANGE_TREASURY_RATIO', async () => {
+        
+        // Make a new proposal.
+        var currentTimeSec = Math.round(new Date().getTime() / 1000);
+        var reason = "reason";
+        var expTimeSec = currentTimeSec + 300;
+        var funcId = await asset.TaskFunction.CHANGE_TREASURY_RATIO();
+        var uintArg = 15;
+        var stringArg = "";
+        var addressArg = ANY_ADDRESS;
+        await asset.makeProposal(reason, expTimeSec, funcId,
+                uintArg, stringArg, addressArg, {from: assetCreator});
+        
+        // Execute the proposal.
+        await asset.executeProposal(0);
+        
+        // Assert that the treasury ratio has changed.
+        assert.equal(await asset.getTreasuryRatio(), uintArg);
+    });
+    
+    it('Execute proposal SEND_MONEY', async () => {
+        
+        // Put money into the treasury.
+        await asset.treasuryDeposit('InfoMessage', {from: assetCreator, value: 1000});
+        var treasuryBefore = parseInt(await asset.getTreasuryBalance());
+        
+        // Make a new proposal.
+        var currentTimeSec = Math.round(new Date().getTime() / 1000);
+        var reason = "reason";
+        var expTimeSec = currentTimeSec + 300;
+        var funcId = await asset.TaskFunction.SEND_MONEY();
+        var uintArg = 1000;
+        var stringArg = "";
+        var addressArg = user1;
+        await asset.makeProposal(reason, expTimeSec, funcId,
+                uintArg, stringArg, addressArg, {from: assetCreator});
+        
+        // Execute the proposal.
+        await asset.executeProposal(0);
+        
+        // Assert that the money has been removed from the treasury.
+        var treasuryAfter = parseInt(await asset.getTreasuryBalance());
+        assert.equal(treasuryAfter - treasuryBefore, uintArg);
+    });
 });
