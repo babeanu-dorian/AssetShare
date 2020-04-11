@@ -7,17 +7,19 @@ const deployDAO = require('./helpers/deployDAO');
 const SharedAsset = artifacts.require('SharedAssetTestHelper.sol');
 const ANY_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-const getLog = (receipt, logName, argName) => {
-    const log = receipt.logs.find(({ event }) => event === logName);
-    return log ? log.args[argName] : null;
-}
-
-const deployedContract = receipt => getLog(receipt, 'NewAppProxy', 'proxy');
+const functionIds = { // TODO - Get these from the contract TaskFunction enum instead.
+        CHANGE_APPROVAL_TRESHOLD: 0,
+        CHANGE_ASSET_DESCRIPTION: 1,
+        CHANGE_TREASURY_RATIO: 2,
+        EXECUTE_EXTERNAL_CONTRACT: 3,
+        ORIGINAL: 4,
+        SEND_MONEY: 5
+    };
 
 contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]) => {
     let asset;
     
-    beforeEach('deploy dao and app', async () => {
+    beforeEach('Create asset instance', async () => {
         asset = await SharedAsset.new(assetCreator, "TestAsset", {from: assetCreator});
     });
     
@@ -46,14 +48,13 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         assert.equal(treasuryBalance, 0);
     });
     
-    it('Initialize with 0 funds', async () => {
-        var funds = parseInt(await asset.getFunds());
-        assert.equal(funds, 0);
-    });
+   it('Initialize with 0 funds', async () => {
+       assert.equal(await web3.eth.getBalance(asset.address), 0);
+   });
     
-    it('Initialize with empty asset description', async () => {
+    it('Initialize with given asset description', async () => {
         var assetDesc = await asset.getAssetDescription();
-        assert.equal(assetDesc, "");
+        assert.equal(assetDesc, "TestAsset");
     });
     
     /*
@@ -97,9 +98,8 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         assert.equal(parseInt(await asset.getSharesByAddress(user1)), 10);
         assert.equal(parseInt(await asset.getOwnersCount()), 2);
         
-        // Remove user1 as owner.
+        // Remove user1 as owner. This does not remove the owner's shares (internally only called when the owner has 0 shares).
         await asset.callRemoveOwner(user1);
-        assert.equal(parseInt(await asset.getSharesByAddress(user1)), 0);
         assert.equal(parseInt(await asset.getOwnersCount()), 1);
     });
     
@@ -117,7 +117,7 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         // Assert actual values.
         await asset.payment("test", {from: user1, value: 1000});
         assert.equal(parseInt(await asset.getTreasuryBalance()), treasury);
-        assert.equal(parseInt(await asset.getFunds()), payment - treasury);
+        assert.equal(parseInt(await web3.eth.getBalance(asset.address)), payment);
     });
     
 //    it('Payout to owners', async () => {
@@ -402,14 +402,14 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         assert.equal(proposal.stringArg, stringArg);
         assert.equal(proposal.addressArg, addressArg);
         assert.equal(proposal.support, parseInt(await asset.getSharesByAddress(assetCreator)));
-        assert.equal(proposal.creationDate >= currentTime, true);
+        assert.equal(proposal.creationDate <= currentTimeSec, true);
         assert.equal(proposal.expirationDate, expTimeSec);
         assert.equal(proposal.completionDate, 0);
         assert.equal(proposal.cancelled, false);
         
-        // Assert that the new proposal matches the new active proposal.
+        // Assert that the new proposal matches the new active proposal (by id).
         var activeProposal = await asset.getActiveProposalByIndex(0);
-        assert.equal(proposal, activeProposal);
+        assert.equal(parseInt(proposal.id), parseInt(activeProposal.id));
     });
     
     it('Cancel proposal', async () => {
@@ -426,7 +426,7 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
                 uintArg, stringArg, addressArg, {from: assetCreator});
         
         // Cancel proposal.
-        await asset.cancelProposal(0);
+        await asset.cancelProposal(0, {from: assetCreator});
         
         // Assert that the proposal is cancelled and deactivated, but not removed from the proposals list.
         var proposal = await asset.getProposal(0);
@@ -475,14 +475,13 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         assert.equal(proposal.support, user1Shares);
     });
     
-    // TODO - Test executeProposal for all possible proposal types.
     it('Execute proposal CHANGE_APPROVAL_TRESHOLD', async () => {
         
         // Make a new proposal.
         var currentTimeSec = Math.round(new Date().getTime() / 1000);
         var reason = "reason";
         var expTimeSec = currentTimeSec + 300;
-        var funcId = await asset.TaskFunction.CHANGE_APPROVAL_TRESHOLD();
+        var funcId = functionIds.CHANGE_APPROVAL_TRESHOLD;
         var uintArg = 10;
         var stringArg = "";
         var addressArg = ANY_ADDRESS;
@@ -502,7 +501,7 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         var currentTimeSec = Math.round(new Date().getTime() / 1000);
         var reason = "reason";
         var expTimeSec = currentTimeSec + 300;
-        var funcId = await asset.TaskFunction.CHANGE_ASSET_DESCRIPTION();
+        var funcId = functionIds.CHANGE_ASSET_DESCRIPTION;
         var uintArg = 0;
         var stringArg = "NewDescription";
         var addressArg = ANY_ADDRESS;
@@ -522,7 +521,7 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         var currentTimeSec = Math.round(new Date().getTime() / 1000);
         var reason = "reason";
         var expTimeSec = currentTimeSec + 300;
-        var funcId = await asset.TaskFunction.CHANGE_TREASURY_RATIO();
+        var funcId = functionIds.CHANGE_TREASURY_RATIO;
         var uintArg = 15;
         var stringArg = "";
         var addressArg = ANY_ADDRESS;
@@ -546,7 +545,7 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         var currentTimeSec = Math.round(new Date().getTime() / 1000);
         var reason = "reason";
         var expTimeSec = currentTimeSec + 300;
-        var funcId = await asset.TaskFunction.SEND_MONEY();
+        var funcId = functionIds.SEND_MONEY;
         var uintArg = 1000;
         var stringArg = "";
         var addressArg = user1;
@@ -558,6 +557,6 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         
         // Assert that the money has been removed from the treasury.
         var treasuryAfter = parseInt(await asset.getTreasuryBalance());
-        assert.equal(treasuryAfter - treasuryBefore, uintArg);
+        assert.equal(treasuryAfter, treasuryBefore - uintArg);
     });
 });
