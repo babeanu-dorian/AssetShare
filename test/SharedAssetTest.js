@@ -243,6 +243,7 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         await asset.offerToSell(numShares, price, ANY_ADDRESS, {from: seller});
         
         // Buy the sell offer.
+        var sellerBalance = parseInt(await web3.eth.getBalance(seller));
         await asset.buyShares(0, numShares, {from: buyer, value: numShares * price});
         
         // Assert that the offer was completed.
@@ -255,6 +256,9 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         assert.equal(parseInt(await asset.getSharesOnSaleByAddress(seller)), 0);
         assert.equal(parseInt(await asset.getSharesByAddress(buyer)), numShares);
         assert.equal(parseInt(await asset.getSharesOnSaleByAddress(buyer)), 0);
+        
+        // Assert that the seller was paid.
+        assert.equal(parseInt(await web3.eth.getBalance(seller)), sellerBalance + numShares * price);
     });
     
     it('Fill a partial existing sell offer', async () => {
@@ -277,6 +281,7 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         await asset.offerToSell(numSharesOnSale, price, ANY_ADDRESS, {from: seller});
         
         // Partially fill the sell offer.
+        var sellerBalance = parseInt(await web3.eth.getBalance(seller));
         await asset.buyShares(0, numSharesBought, {from: buyer, value: numSharesBought * price});
         
         // Assert that the offer was partially completed.
@@ -290,6 +295,9 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         assert.equal(parseInt(await asset.getSharesOnSaleByAddress(seller)), sharesOnSale);
         assert.equal(parseInt(await asset.getSharesByAddress(buyer)), numSharesBought);
         assert.equal(parseInt(await asset.getSharesOnSaleByAddress(buyer)), 0);
+        
+        // Assert that the seller was paid.
+        assert.equal(parseInt(await web3.eth.getBalance(seller)), sellerBalance + numSharesBought * price);
     });
     
     it('Fill an entire existing buy offer', async () => {
