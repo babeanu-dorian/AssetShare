@@ -7,7 +7,7 @@ const deployDAO = require('./helpers/deployDAO');
 const SharedAsset = artifacts.require('SharedAssetTestHelper.sol');
 const ANY_ADDRESS = '0x0000000000000000000000000000000000000000';
 
-const functionIds = { // TODO - Get these from the contract TaskFunction enum instead.
+const functionIds = { // This list has to be kept in sync with the TaskFunction enum order.
         CHANGE_APPROVAL_TRESHOLD: 0,
         CHANGE_ASSET_DESCRIPTION: 1,
         CHANGE_TREASURY_RATIO: 2,
