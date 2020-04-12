@@ -120,18 +120,41 @@ contract('SharedAssetTestHelper', ([contractCreator, assetCreator, user1, user2]
         assert.equal(parseInt(await web3.eth.getBalance(asset.address)), payment);
     });
     
-//    it('Payout to owners', async () => {
-//        
-//        // Deposit money into the treasury.
-//        await asset.treasuryDeposit('InfoMessage', {from: user1, value: 1e12});
-//        
-//        // Payout to the shareholders.
-//        var currentTimeSec = Date.now() / 1000;
-//        await asset.payOwners({timestamp: currentTimeSec + parseInt(await asset.payoutPeriod)});
-//        
-//        // Assert that the owners have received the payout.
-//        // TODO - How to get Ether from address?
-//    });
+    it('Payout to shareholders', async () => {
+        
+        // Transfer shares from creator to users to create multiple shareholders.
+        var TOTAL_SHARES = parseInt(await asset.TOTAL_SHARES());
+        var user1Shares = Math.floor(TOTAL_SHARES * 0.3);
+        var user2Shares = Math.floor(TOTAL_SHARES * 0.2);
+        var assetCreatorShares = TOTAL_SHARES - user1Shares - user2Shares;
+        await asset.callTransferShares(assetCreator, user1, user1Shares);
+        await asset.callTransferShares(assetCreator, user2, user2Shares);
+        
+        // Make a payment to the contract.
+        var payment = 1e20;
+        await asset.payment('InfoMessage', {from: user1, value: payment});
+        
+        // Calculate value that should be distributed among shareholders.
+        var totalTreasury = payment * parseInt(await asset.getTreasuryRatio()) / parseInt(await asset.TREASURY_RATIO_DENOMINATOR());
+        var totalPayout = payment - totalTreasury;
+        
+        // Store current balances.
+        var assetBalance = parseInt(await web3.eth.getBalance(asset.address));
+        var user1Balance = parseInt(await web3.eth.getBalance(user1));
+        var user2Balance = parseInt(await web3.eth.getBalance(user2));
+        var assetCreatorBalance = parseInt(await web3.eth.getBalance(assetCreator));
+        
+        // Request payouts.
+        await asset.withdrawPayout({from: user1});
+        await asset.withdrawPayout({from: user2});
+        await asset.withdrawPayout({from: assetCreator});
+        
+        // Assert that the payments were made. The 1e15 wei (0.001 Eth) tolorance accounts for the gas price of the withdrawPayout function.
+        assert.equal(parseInt(await web3.eth.getBalance(asset.address)), assetBalance - totalPayout);
+        assert.equal(Math.abs(parseInt(await web3.eth.getBalance(user1)) - (user1Balance + totalPayout * user1Shares / TOTAL_SHARES)) < 1e15, true);
+        assert.equal(Math.abs(parseInt(await web3.eth.getBalance(user2)) - (user2Balance + totalPayout * user2Shares / TOTAL_SHARES)) < 1e15, true);
+        assert.equal(Math.abs(parseInt(await web3.eth.getBalance(assetCreator)) - (assetCreatorBalance + totalPayout * assetCreatorShares / TOTAL_SHARES)) < 1e15, true);
+    });
     
     it('Add to treasury increases balance', async () => {
         var treasuryBalanceBefore = parseInt(await asset.getTreasuryBalance());
