@@ -23,8 +23,21 @@ ipfs init
 
 ### Run the application
 
-In the application project folder, run:
+In the application project folder:
 ```
 npm install
 npm start
+```
+
+If npm start fails, use:
+
+```
+aragon run --files dist
+```
+
+### Run unit tests
+
+In the application project folder:
+```
+npm test
 ```
