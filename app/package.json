@@ -12,7 +12,9 @@
     "react-dom": "^16.8.6",
     "regenerator-runtime": "^0.13.2",
     "rxjs": "^6.5.2",
-    "styled-components": "^4.3.2"
+    "styled-components": "^4.3.2",
+    "chart.js": "2.9.3",
+    "react-chartjs-2": "2.9.0"
   },
   "devDependencies": {
     "@babel/core": "^7.5.4",

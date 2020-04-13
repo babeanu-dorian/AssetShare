@@ -1,5 +1,5 @@
-import React, {useState} from 'react'
-import {useAragonApi} from '@aragon/api-react'
+import React, {useState} from 'react';
+import {useAragonApi} from '@aragon/api-react';
 import {
     Box,
     Button,
@@ -11,13 +11,19 @@ import {
     IdentityBadge,
     Main,
     SyncIndicator,
-    Tabs, Text,
+    Tabs,
+    Text,
     TextInput,
-    textStyle
-} from '@aragon/ui'
+    textStyle,
+    Toast,
+    ToastHub
+} from '@aragon/ui';
 
-import styled from 'styled-components'
-import assetJsonInterface from './SharedAssetInterface'
+import {Line} from 'react-chartjs-2';
+import styled from 'styled-components';
+import assetJsonInterface from './SharedAssetInterface';
+
+var toastAlert;
 
 function App() {
     const {api, appState} = useAragonApi();
@@ -27,12 +33,17 @@ function App() {
         TREASURY_RATIO_DENOMINATOR,
         functionIds,
         currentUser,
+        pendingPayout,
+        sharesHistory,
+        sharesInvestment,
+        sharesSoldGains,
         assetDescription,
         treasuryRatio,
         payoutPeriod,
         proposalApprovalThreshold,
         treasuryBalance,
-        funds,
+        paymentHistory,
+        shareValueHistory,
         owners,
         offers,
         proposals,
@@ -43,6 +54,7 @@ function App() {
     const [description, setDescription] = useState('');
     const [selectedAsset, setSelectedAsset] = useState(null);
     const [assetEventSubscription, setAssetEventSubscription] = useState(null);
+    const [selectedProfileTab, setSelectedProfileTab] = useState(0);
     const [amount, setAmount] = useState('');
     const [message, setMessage] = useState('');
     const [shares, setShares] = useState('');
@@ -69,16 +81,6 @@ function App() {
 
     function weiToEth(amount) {
         return amount / weiInEth;
-    }
-
-
-    function searchOwners(currentUser) {
-        for (var i = 0; i < owners.length; i++) {
-            if (owners[i].address === currentUser) {
-                console.log(currentUser);
-                return owners[i].shares
-            }
-        }
     }
 
     function ethToWei(amount) {
@@ -263,6 +265,45 @@ function App() {
         return '';
     }
 
+    function publishProposal(reason, unixEndDate, functionId, uintArg, stringArg, addressArg) {
+        if (unixEndDate < dateToUnixTimestamp(new Date())) {
+            toastAlert("Expiration date must be in the future.");
+            return;
+        }
+        if (owners[currentUser].sharesOnSale > 0) {
+            toastAlert("You cannot publish proposals while having shares on sale.");
+            return;
+        }
+        selectedAsset.makeProposal(reason, unixEndDate, functionId, uintArg, stringArg, addressArg).toPromise();
+    }
+
+    function userIncomeHistory() {
+
+        if (paymentHistory.length == 0) return [];
+
+        let sharesIdx = -1;
+        let nextChangeInShares = (sharesHistory.length == 0 ? Number.MAX_VALUE : parseInt(sharesHistory[0].timestamp));
+        let income = [];
+
+        for (let paymentIdx = 0; paymentIdx != paymentHistory.length; ++paymentIdx) {
+            if (paymentHistory[paymentIdx].timestamp >= nextChangeInShares) {
+                ++sharesIdx;
+                nextChangeInShares = (sharesIdx >= sharesHistory.length ? Number.MAX_VALUE : parseInt(sharesHistory[sharesIdx].timestamp));
+            }
+            let shares = (sharesIdx < 0 ? 0 : sharesHistory[sharesIdx].amount);
+            income.push({
+                amount: shares * paymentHistory[paymentIdx].amount,
+                timestamp: paymentHistory[paymentIdx].timestamp
+            });
+        }
+
+        return income;
+    }
+
+    function calculateROI(investment, revenue) {
+        return (revenue - investment) * 100 / investment;
+    }
+
     let selectedView;
 
     switch (selectedTab) {
@@ -301,6 +342,7 @@ function App() {
                                         setAssetEventSubscription(asset.events().subscribe(({event, returnValues, address}) => {
                                             api.emitTrigger(event, {...returnValues, contractAddress: address});
                                         }));
+                                        setSelectedTab(1);
                                     }}
                                 />
                             ]
@@ -309,81 +351,15 @@ function App() {
                 </Box>
             );
             break;
-        case 1: //Asset Description
-            selectedView = (
-                <Box>{assetDescription}</Box>
-            );
-            break;
-        case 2: //Your Profile
+        case 1: //Selected Asset
             selectedView = (
                 <Box>
                     Address:
-                    <Text css={`margin-left:90px`}>{displayAddress(currentUser)}</Text> <br/>
-                    Shares:
-                    <Text css={`margin-left:100px`} >
-                        {amountToPercentage(searchOwners(currentUser),TOTAL_SHARES)}
-                    </Text>
-                    % <br/>
-                    Unclaimed Revenue: TODO <br/>
-                    Supported Proposals:  <br/>
-                    <DataView
-                        display="table"
-                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Actions']}
-                        entries={supportedProposals}
-                        renderEntry={({id, idx, owner, reason, completionDate, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
-
-                            let active = (completionDate == 0) && (expirationDate > dateToUnixTimestamp(new Date()));
-
-                            return [
-                                id,
-                                displayAddress(owner),
-                                proposalDescription(functionId, uintArg, stringArg, addressArg),
-                                reason,
-                                amountToPercentage(support, TOTAL_SHARES),
-                                displayDate(expirationDate),
-                                (active ?
-                                    <Buttons>
-                                        <Button
-                                            display="label"
-                                            label="Increase Support"
-                                            onClick={() => selectedAsset.supportProposal(id).toPromise()}
-                                        />
-                                        <Button
-                                            display="label"
-                                            label="Revoke Support"
-                                            onClick={() => selectedAsset.revokeProposalSupport(id).toPromise()}
-                                        />
-                                        <Button
-                                            display="label"
-                                            label="Implement"
-                                            onClick={() => selectedAsset.executeProposal(id).toPromise()}
-                                        />
-                                        <Button
-                                            display="label"
-                                            label="Cancel"
-                                            onClick={() => selectedAsset.cancelProposal(id).toPromise()}
-                                        />
-                                    </Buttons>
-                                    :
-                                    <Button
-                                        display="label"
-                                        label="Remove"
-                                        onClick={() => selectedAsset.removeInactiveSupportedProposalByIndex(idx).toPromise()}
-                                    />
-                                )
-                            ]
-                        }}
-                    />
-                </Box>
-            );
-            break;
-        case 3: //Payments
-            selectedView = (
-                <Box>
+                    <Text css={`margin-left:95px`}>{displayAddress(selectedAsset.address)}</Text> <br/>
+                    Description:
+                    <Text css={`margin-left:75px;`}>{assetDescription}</Text> <br/>
                     Treasury balance:
-                    <Text css={`margin-left:45px;`}>{weiToEth(treasuryBalance)} eth</Text> <br/>
-                    Funds:
-                    <Text css={`margin-left:124px;`}>{weiToEth(funds)} eth </Text><br/>
+                    <Text css={`margin-left:40px;`}>{weiToEth(treasuryBalance)} eth</Text> <br/>
                     Amount (eth): <TextInput
                         css={`margin-left:60px;`}
                         type="number"
@@ -406,22 +382,276 @@ function App() {
                             label="Deposit to treasury"
                             onClick={() => selectedAsset.treasuryDeposit(message, {'value': ethToWei(parseFloat(amount))}).toPromise()}
                         />
-                        <Button
-                            display="label"
-                            label="Distribute revenue"
-                            onClick={() => selectedAsset.payOwners().toPromise()}
-                        />
-                    </Buttons>
+                    </Buttons> <br/>
+                    <Line data={{
+                        labels: paymentHistory.map(entry => displayDate(entry.timestamp)),
+                        datasets: [
+                            {
+                                label: 'Asset Revenue (eth)',
+                                data: paymentHistory.map(entry => weiToEth(entry.amount))
+                            }
+                        ]
+                    }}/><br/>
+                    <Line data={{
+                        labels: shareValueHistory.map(entry => displayDate(entry.timestamp)),
+                        datasets: [
+                            {
+                                label: 'Value of one share (eth / %)',
+                                data: shareValueHistory.map(entry => amountToPercentage(weiToEth(entry.amount), TOTAL_SHARES))
+                            }
+                        ]
+                    }}/><br/>
                 </Box>
             );
             break;
-        case 4: //Owners
+        case 2: //Your Profile
+
+            let selectedProfileView;
+
+            switch(selectedProfileTab) {
+                case 0: // Your Offers
+                    selectedProfileView = (
+                        <DataView
+                            display="table"
+                            fields={['Id', 'Type', 'Intended Party', 'Shares (%)', 'Price (eth / %)', 'Actions']}
+                            entries={
+                                offers.sellOffers.filter(offer => {return offer.seller == currentUser;}).concat(
+                                    offers.buyOffers.filter(offer => {return offer.buyer == currentUser;})
+                                )
+                            }
+                            renderEntry={({id, offerType, seller, buyer, shares, price}) => {
+                                return [
+                                    id,
+                                    offerType,
+                                    (offerType == 'SELL' ? displayAddress(buyer) : displayAddress(seller)),
+                                    amountToPercentage(shares, TOTAL_SHARES),
+                                    weiToEth(price),
+                                    <Buttons>
+                                        <Button
+                                            size="small"
+                                            display="label"
+                                            label="Autocomplete"
+                                            onClick={() => {
+                                                if (offerType == 'SELL') {
+                                                    sellShares({id, seller, buyer, price, shares}, true);
+                                                } else {
+                                                    buyShares({id, seller, buyer, price, shares}, true);
+                                                }
+                                            }}
+                                        />
+                                        <Button
+                                            size="small"
+                                            display="label"
+                                            label="Cancel"
+                                            onClick={() => selectedAsset.cancelOffer(id).toPromise()}
+                                        />
+                                    </Buttons>
+                                ]
+                            }}
+                        />
+                    );
+                    break;
+                case 1: // Your Proposals
+                    selectedProfileView = (
+                        <DataView
+                            display="table"
+                            fields={['Id', 'Description', 'Reason', 'Support (%)', 'End Date', 'Actions']}
+                            entries={proposals.filter(proposal => {return proposal.owner == currentUser;})}
+                            renderEntry={({id, reason, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
+
+                                let expired = (expirationDate <= dateToUnixTimestamp(new Date()));
+                                let approved = (parseInt(support) >= proposalApprovalThreshold);
+                                let supported = (supportedProposals[id] != undefined);
+
+                                return [
+                                    id,
+                                    proposalDescription(functionId, uintArg, stringArg, addressArg),
+                                    reason,
+                                    amountToPercentage(support, TOTAL_SHARES),
+                                    displayDate(expirationDate),
+                                    <Buttons>
+                                        {(expired || supported ? '' :
+                                            <Button
+                                                size="small"
+                                                display="label"
+                                                label="Support"
+                                                onClick={() => {
+                                                    if (owners[currentUser].sharesOnSale > 0) {
+                                                        toastAlert("You cannot support proposals while having shares on sale.");
+                                                        return;
+                                                    }
+                                                    selectedAsset.supportProposal(id).toPromise();
+                                                }}
+                                            />
+                                        )}
+                                        {(expired || !supported ? '' :
+                                            <Button
+                                                size="small"
+                                                display="label"
+                                                label="Revoke Support"
+                                                onClick={() => selectedAsset.revokeProposalSupport(id).toPromise()}
+                                            />
+                                        )}
+                                        {(expired || !approved ? '' :
+                                            <Button
+                                                size="small"
+                                                display="label"
+                                                label="Implement"
+                                                onClick={() => selectedAsset.executeProposal(id).toPromise()}
+                                            />
+                                        )}
+                                        <Button
+                                            size="small"
+                                            display="label"
+                                            label="Cancel"
+                                            onClick={() => selectedAsset.cancelProposal(id).toPromise()}
+                                        />
+                                    </Buttons>
+                                ]
+                            }}
+                        />
+                    );
+                    break;
+                case 2: // Supported Proposals
+                    selectedProfileView = (
+                        <DataView
+                            display="table"
+                            fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Actions']}
+                            entries={Object.values(supportedProposals)}
+                            renderEntry={({id, idx, owner, reason, completionDate, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
+
+                                let completed = (completionDate == 0);
+                                let expired = (expirationDate <= dateToUnixTimestamp(new Date()));
+                                let active = !(completed || expired);
+                                let approved = (parseInt(support) >= proposalApprovalThreshold);
+                                let owned = (owner == currentUser);
+
+                                return [
+                                    id,
+                                    displayAddress(owner),
+                                    proposalDescription(functionId, uintArg, stringArg, addressArg),
+                                    reason,
+                                    amountToPercentage(support, TOTAL_SHARES),
+                                    displayDate(expirationDate),
+                                    <Buttons>
+                                        {(active ?
+                                            <Button
+                                                display="label"
+                                                label="Increase Support"
+                                                onClick={() => selectedAsset.supportProposal(id).toPromise()}
+                                            />
+                                        : '')}
+                                        {(active ?
+                                            <Button
+                                                display="label"
+                                                label="Revoke Support"
+                                                onClick={() => selectedAsset.revokeProposalSupport(id).toPromise()}
+                                            />
+                                        : '')}
+                                        {(active && approved ? 
+                                            <Button
+                                                display="label"
+                                                label="Implement"
+                                                onClick={() => selectedAsset.executeProposal(id).toPromise()}
+                                            />
+                                        : '')}
+                                        {(owned || expired ? 
+                                            <Button
+                                                display="label"
+                                                label="Cancel"
+                                                onClick={() => selectedAsset.cancelProposal(id).toPromise()}
+                                            />
+                                        : '')}
+                                        {(active ? '' :
+                                            <Button
+                                                display="label"
+                                                label="Remove"
+                                                onClick={() => selectedAsset.removeInactiveSupportedProposalByIndex(idx).toPromise()}
+                                            />
+                                        )}
+                                    </Buttons>
+                                ]
+                            }}
+                        />
+                    );
+                    break;
+                case 3: // Financial Data
+                    let income = weiToEth(userIncomeHistory().reduce((a, b) => (a.amount + b.amount)));
+                    selectedProfileView = (
+                        <div>
+                            Eth invested:
+                            <Text css={`margin-left:110px`}>{weitToEth(sharesInvestment)}</Text> <br/>
+                            Eth gained from selling shares:
+                            <Text css={`margin-left:20px`}>{weitToEth(sharesSoldGains)}</Text> <br/>
+                            Total income (eth):
+                            <Text css={`margin-left:85px`}>{weitToEth(income)}</Text> <br/>
+                            Return on Investment (%):
+                            <Text css={`margin-left:50px`}>{calculateROI(weitToEth(sharesInvestment), income + weitToEth(sharesSoldGains))}</Text> <br/>
+                        </div>
+                    );
+                    break;
+                case 4: // Income History
+                    let incomeHistory = userIncomeHistory();
+                    selectedProfileView = (
+                        <Line data={{
+                            labels: incomeHistory.map(entry => displayDate(entry.timestamp)),
+                            datasets: [
+                                {
+                                    label: 'Ownership History (%)',
+                                    data: incomeHistory.map(entry => amountToPercentage(weiToEth(entry.amount), TOTAL_SHARES))
+                                }
+                            ]
+                        }}/>
+                    );
+                    break;
+                case 5: // Shares History
+                    selectedProfileView = (
+                        <Line data={{
+                            labels: sharesHistory.map(entry => displayDate(entry.timestamp)),
+                            datasets: [
+                                {
+                                    label: 'Ownership History (%)',
+                                    data: shareValueHistory.map(entry => amountToPercentage(entry.amount, TOTAL_SHARES))
+                                }
+                            ]
+                        }}/>
+                    );
+            }
+
+            selectedView = (
+                <Box>
+                    Address:
+                    <Text css={`margin-left:100px`}>{displayAddress(currentUser)}</Text> <br/>
+                    Shares:
+                    <Text css={`margin-left:110px`} >
+                        {(owners[currentUser] ? amountToPercentage(owners[currentUser].shares, TOTAL_SHARES) : 0)} %
+                    </Text> <br/>
+                    Unclaimed Revenue: <Text css={`margin-left:15px`}>{weiToEth(pendingPayout)} eth</Text> <br/>
+                    <Button
+                        display="label"
+                        label="Withdraw Revenue"
+                        disabled={pendingPayout == 0}
+                        onClick={() => selectedAsset.withdrawPayout().subscribe(
+                            txHash => api.emitTrigger('PAYOUT_WITHDRAWN'),
+                            err => console.log(err)
+                        )}
+                    />
+                    <Tabs
+                        items={['Your Offers', 'Your Proposals', 'Supported Proposals', 'Financial Data', 'Income History', 'Shares History']}
+                        selected={selectedProfileTab}
+                        onChange={setSelectedProfileTab}
+                    />
+                    {selectedProfileView}
+                </Box>
+            );
+            break;
+        case 3: //Owners
             selectedView = (
                 <Box>
                     <DataView
                         display="table"
                         fields={['Address', 'Shares (%)', 'Shares on Sale (%)']}
-                        entries={owners}
+                        entries={Object.values(owners)}
                         renderEntry={({address, shares, sharesOnSale}) => {
                             return [displayAddress(address), amountToPercentage(shares, TOTAL_SHARES), amountToPercentage(sharesOnSale, TOTAL_SHARES)]
                         }}
@@ -429,7 +659,7 @@ function App() {
                 </Box>
             );
             break;
-        case 5: //Offers
+        case 4: //Offers
 
             let activeOffersView;
 
@@ -438,7 +668,7 @@ function App() {
                     activeOffersView = (
                         <DataView
                             display="table"
-                            fields={['Id', 'Seller', 'Intended Buyer', 'Shares (%)', 'Price (eth)', 'Shares to buy (%)', 'Buy', 'Autocomplete', 'Cancel']}
+                            fields={['Id', 'Seller', 'Intended Buyer', 'Shares (%)', 'Price (eth)', 'Shares to buy (%)', 'Actions']}
                             entries={offers.sellOffers}
                             renderEntry={({id, seller, buyer, shares, price}) => {
 
@@ -458,30 +688,30 @@ function App() {
                                             [id]: parseFloat(event.target.value)
                                         })}
                                     />,
-                                    <Button
-                                        size="small"
-                                        display="label"
-                                        label="Buy"
-                                        onClick={() => selectedAsset.buyShares(id, percentageToAmount(partialShares[id], TOTAL_SHARES), {'value': calcPartialPrice(partialShares[id], price)}).toPromise()}
-                                    />,
-                                    <Button
-                                        size="small"
-                                        display="label"
-                                        label="Autocomplete"
-                                        onClick={() => {
-                                            if (currentUser != seller) {
-                                                console.log('Error: Only the offer owner can autocomplete it.');
-                                                return;
-                                            }
-                                            sellShares({id, seller, buyer, price, shares}, true);
-                                        }}
-                                    />,
-                                    <Button
-                                        size="small"
-                                        display="label"
-                                        label="Cancel"
-                                        onClick={() => selectedAsset.cancelOffer(id).toPromise()}
-                                    />
+                                    (seller == currentUser ?
+                                        <Buttons>
+                                            <Button
+                                                size="small"
+                                                display="label"
+                                                label="Autocomplete"
+                                                onClick={() => sellShares({id, seller, buyer, price, shares}, true)}
+                                            />
+                                            <Button
+                                                size="small"
+                                                display="label"
+                                                label="Cancel"
+                                                onClick={() => selectedAsset.cancelOffer(id).toPromise()}
+                                            />
+                                        </Buttons>
+                                        :
+                                        <Button
+                                            size="small"
+                                            display="label"
+                                            label="Buy"
+                                            disabled={!(buyer == anyAddress || buyer == currentUser)}
+                                            onClick={() => selectedAsset.buyShares(id, percentageToAmount(partialShares[id], TOTAL_SHARES), {'value': calcPartialPrice(partialShares[id], price)}).toPromise()}
+                                        />
+                                    )
                                 ]
                             }}
                         />
@@ -491,7 +721,7 @@ function App() {
                     activeOffersView = (
                         <DataView
                             display="table"
-                            fields={['Id', 'Buyer', 'Intended Seller', 'Shares (%)', 'Offer (eth)', 'Shares to sell (%)', 'Sell', 'Autocomplete', 'Cancel']}
+                            fields={['Id', 'Buyer', 'Intended Seller', 'Shares (%)', 'Offer (eth)', 'Shares to sell (%)', 'Actions']}
                             entries={offers.buyOffers}
                             renderEntry={({id, seller, buyer, shares, price}) => {
 
@@ -511,30 +741,36 @@ function App() {
                                             [id]: parseFloat(event.target.value)
                                         })}
                                     />,
-                                    <Button
-                                        size="small"
-                                        display="label"
-                                        label="Sell"
-                                        onClick={() => selectedAsset.sellShares(id, percentageToAmount(partialShares[id], TOTAL_SHARES)).toPromise()}
-                                    />,
-                                    <Button
-                                        size="small"
-                                        display="label"
-                                        label="Autocomplete"
-                                        onClick={() => {
-                                            if (currentUser != buyer) {
-                                                console.log('Error: Only the offer owner can autocomplete it.');
-                                                return;
-                                            }
-                                            buyShares({id, seller, buyer, price, shares}, true);
-                                        }}
-                                    />,
-                                    <Button
-                                        size="small"
-                                        display="label"
-                                        label="Cancel"
-                                        onClick={() => selectedAsset.cancelOffer(id).toPromise()}
-                                    />
+                                    (buyer == currentUser ?
+                                        <Buttons>
+                                            <Button
+                                                size="small"
+                                                display="label"
+                                                label="Autocomplete"
+                                                onClick={() => buyShares({id, seller, buyer, price, shares}, true)}
+                                            />
+                                            <Button
+                                                size="small"
+                                                display="label"
+                                                label="Cancel"
+                                                onClick={() => selectedAsset.cancelOffer(id).toPromise()}
+                                            />
+                                        </Buttons>
+                                        :
+                                        <Button
+                                            size="small"
+                                            display="label"
+                                            label="Sell"
+                                            disabled={!(owners[currentUser].sharesOnSale + percentageToAmount(partialShares[id], TOTAL_SHARES) <= owners[currentUser].shares && (buyer == anyAddress || buyer == currentUser))}
+                                            onClick={() => {
+                                                if (Object.values(supportedProposals).length > 0) {
+                                                    toastAlert("You cannot sell shares while supporting proposals.");
+                                                    return;
+                                                }
+                                                selectedAsset.sellShares(id, percentageToAmount(partialShares[id], TOTAL_SHARES)).toPromise();
+                                            }}
+                                        />
+                                    )
                                 ]
                             }}
                         />
@@ -568,18 +804,28 @@ function App() {
                         <Button
                             display="label"
                             label="Offer to sell"
-                            onClick={() => sellShares({
-                                id: null,
-                                seller: currentUser,
-                                buyer: (intendedParty ? intendedParty : anyAddress),
-                                shares: percentageToAmount(parseFloat(shares), TOTAL_SHARES),
-                                price: ethPerPercentageToWeiPerShare(price)
-                            }, autocompleteCheck)
+                            disabled={
+                                !owners[currentUser] || owners[currentUser].sharesOnSale + percentageToAmount(parseFloat(shares), TOTAL_SHARES) > owners[currentUser].shares ||
+                                    shares == '' || shares < 0.0 || shares > 100.0 || price == '' || price < 0.0
                             }
+                            onClick={() => {
+                                if (Object.values(supportedProposals).length > 0) {
+                                    toastAlert("You cannot sell shares while supporting proposals.");
+                                    return;
+                                }
+                                sellShares({
+                                    id: null,
+                                    seller: currentUser,
+                                    buyer: (intendedParty ? intendedParty : anyAddress),
+                                    shares: percentageToAmount(parseFloat(shares), TOTAL_SHARES),
+                                    price: ethPerPercentageToWeiPerShare(price)
+                                }, autocompleteCheck);
+                            }}
                         />
                         <Button
                             display="label"
                             label="Offer to buy"
+                            disabled={currentUser == '' || shares == '' || shares < 0.0 || shares > 100.0 || price == '' || price < 0.0}
                             onClick={() => buyShares({
                                 id: null,
                                 seller: (intendedParty ? intendedParty : anyAddress),
@@ -599,7 +845,7 @@ function App() {
                 </Box>
             )
             break;
-        case 6: //Proposals
+        case 5: //Proposals
 
             let proposalForm;
 
@@ -623,7 +869,7 @@ function App() {
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
                             End date: <TextInput
-                                css={`margin-left:105px;`}
+                                css={`margin-left:110px;`}
                                 type="datetime-local"
                                 value={endDate}
                                 onChange={event => setEndDate(event.target.value)}
@@ -632,16 +878,15 @@ function App() {
                                 css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
-                                onClick={() =>
-                                    selectedAsset.makeProposal(
-                                        proposalReason,
-                                        dateToUnixTimestamp(new Date(endDate)),
-                                        functionIds.CHANGE_APPROVAL_TRESHOLD,
-                                        percentageToAmount(parseFloat(newApprovalThreshold, 10), TOTAL_SHARES),
-                                        '',
-                                        anyAddress
-                                    ).toPromise()
-                                }
+                                disabled={newApprovalThreshold == '' || newApprovalThreshold < 0.0 || newApprovalThreshold > 100.0}
+                                onClick={() => publishProposal(
+                                    proposalReason,
+                                    dateToUnixTimestamp(new Date(endDate)),
+                                    functionIds.CHANGE_APPROVAL_TRESHOLD,
+                                    percentageToAmount(parseFloat(newApprovalThreshold, 10), TOTAL_SHARES),
+                                    '',
+                                    anyAddress
+                                )}
                             />
                         </div>
                     );
@@ -650,7 +895,7 @@ function App() {
                     proposalForm = (
                         <div>
                             New description: <TextInput
-                                css={`margin-left:60px;`}
+                                css={`margin-left:58px;`}
                                 value={newAssetDescription}
                                 onChange={event => setNewAssetDescription(event.target.value)}
                             /> <br/>
@@ -660,7 +905,7 @@ function App() {
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
                             End date: <TextInput
-                                css={`margin-left:105px;`}
+                                css={`margin-left:110px;`}
                                 type="datetime-local"
                                 value={endDate}
                                 onChange={event => setEndDate(event.target.value)}
@@ -670,56 +915,14 @@ function App() {
 
                                 display="label"
                                 label="Make proposal"
-                                onClick={() =>
-                                    selectedAsset.makeProposal(
-                                        proposalReason,
-                                        dateToUnixTimestamp(new Date(endDate)),
-                                        functionIds.CHANGE_ASSET_DESCRIPTION,
-                                        0,
-                                        newAssetDescription,
-                                        anyAddress
-                                    ).toPromise()
-                                }
-                            />
-                        </div>
-                    );
-                    break;
-                case functionIds.CHANGE_PAYOUT_PERIOD:
-                    proposalForm = (
-                        <div>
-                            Current value:
-                            <Text css={`margin-left:80px;`}>{payoutPeriod} seconds </Text><br/>
-                            New value: <TextInput
-                                css={`margin-left:100px;`}
-                                type="number"
-                                value={newPayoutPeriod}
-                                onChange={event => setNewPayoutPeriod(event.target.value)}
-                            /> seconds <br/>
-                            Reason: <TextInput
-                                css={`margin-left:120px;`}
-                                value={proposalReason}
-                                onChange={event => setProposalReason(event.target.value)}
-                            /> <br/>
-                            End date: <TextInput
-                                css={`margin-left:105px;`}
-                                type="datetime-local"
-                                value={endDate}
-                                onChange={event => setEndDate(event.target.value)}
-                            /> <br/>
-                            <Button
-                                css={`margin-left:180px;`}
-                                display="label"
-                                label="Make proposal"
-                                onClick={() =>
-                                    selectedAsset.makeProposal(
-                                        proposalReason,
-                                        dateToUnixTimestamp(new Date(endDate)),
-                                        functionIds.CHANGE_PAYOUT_PERIOD,
-                                        parseInt(newPayoutPeriod, 10),
-                                        '',
-                                        anyAddress
-                                    ).toPromise()
-                                }
+                                onClick={() => publishProposal(
+                                    proposalReason,
+                                    unixEndDate,
+                                    functionIds.CHANGE_ASSET_DESCRIPTION,
+                                    0,
+                                    newAssetDescription,
+                                    anyAddress
+                                )}
                             />
                         </div>
                     );
@@ -743,7 +946,7 @@ function App() {
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
                             End date: <TextInput
-                                css={`margin-left:105px;`}
+                                css={`margin-left:110px;`}
                                 type="datetime-local"
                                 value={endDate}
                                 onChange={event => setEndDate(event.target.value)}
@@ -752,16 +955,15 @@ function App() {
                                 css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
-                                onClick={() =>
-                                    selectedAsset.makeProposal(
-                                        proposalReason,
-                                        dateToUnixTimestamp(new Date(endDate)),
-                                        functionIds.CHANGE_TREASURY_RATIO,
-                                        percentageToAmount(parseFloat(newTreasuryRatio, 10), TREASURY_RATIO_DENOMINATOR),
-                                        '',
-                                        anyAddress
-                                    ).toPromise()
-                                }
+                                disabled={newTreasuryRatio == '' || newTreasuryRatio < 0.0 || newTreasuryRatio > 100.0}
+                                onClick={() => publishProposal(
+                                    proposalReason,
+                                    dateToUnixTimestamp(new Date(endDate)),
+                                    functionIds.CHANGE_TREASURY_RATIO,
+                                    percentageToAmount(parseFloat(newTreasuryRatio, 10), TREASURY_RATIO_DENOMINATOR),
+                                    '',
+                                    anyAddress
+                                )}
                             />
                         </div>
                     );
@@ -791,7 +993,7 @@ function App() {
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
                             End date: <TextInput
-                                css={`margin-left:105px;`}
+                                css={`margin-left:110px;`}
                                 type="datetime-local"
                                 value={endDate}
                                 onChange={event => setEndDate(event.target.value)}
@@ -800,16 +1002,15 @@ function App() {
                                 css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
-                                onClick={() =>
-                                    selectedAsset.makeProposal(
-                                        proposalReason,
-                                        dateToUnixTimestamp(new Date(endDate)),
-                                        functionIds.EXECUTE_EXTERNAL_CONTRACT,
-                                        '' + ethToWei(parseFloat(amountToSendInCall)),
-                                        functionSignature,
-                                        contractAddress
-                                    ).toPromise()
-                                }
+                                disabled={amountToSendInCall == ''}
+                                onClick={() => publishProposal(
+                                    proposalReason,
+                                    dateToUnixTimestamp(new Date(endDate)),
+                                    functionIds.EXECUTE_EXTERNAL_CONTRACT,
+                                    '' + ethToWei(parseFloat(amountToSendInCall)),
+                                    functionSignature,
+                                    contractAddress
+                                )}
                             />
                         </div>
                     );
@@ -819,7 +1020,7 @@ function App() {
                         <div>
                             Proposal:
                             <TextInput
-                                css={`margin-left:115px;`}
+                                css={`margin-left:113px;`}
                                 value={proposalText}
                                 onChange={event => setProposalText(event.target.value)}
                             /> <br/>
@@ -829,7 +1030,7 @@ function App() {
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
                             End date: <TextInput
-                                css={`margin-left:105px;`}
+                                css={`margin-left:110px;`}
                                 type="datetime-local"
                                 value={endDate}
                                 onChange={event => setEndDate(event.target.value)}
@@ -838,16 +1039,14 @@ function App() {
                                 css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
-                                onClick={() =>
-                                    selectedAsset.makeProposal(
-                                        proposalReason,
-                                        dateToUnixTimestamp(new Date(endDate)),
-                                        functionIds.ORIGINAL,
-                                        0,
-                                        proposalText,
-                                        anyAddress
-                                    ).toPromise()
-                                }
+                                onClick={() => publishProposal(
+                                    proposalReason,
+                                    dateToUnixTimestamp(new Date(endDate)),
+                                    functionIds.ORIGINAL,
+                                    0,
+                                    proposalText,
+                                    anyAddress
+                                )}
                             />
                         </div>
                     );
@@ -872,7 +1071,7 @@ function App() {
                                 onChange={event => setProposalReason(event.target.value)}
                             /> <br/>
                             End date: <TextInput
-                                css={`margin-left:105px;`}
+                                css={`margin-left:110px;`}
                                 type="datetime-local"
                                 value={endDate}
                                 onChange={event => setEndDate(event.target.value)}
@@ -881,16 +1080,15 @@ function App() {
                                 css={`margin-left:180px;`}
                                 display="label"
                                 label="Make proposal"
-                                onClick={() =>
-                                    selectedAsset.makeProposal(
-                                        proposalReason,
-                                        dateToUnixTimestamp(new Date(endDate)),
-                                        functionIds.SEND_MONEY,
-                                        '' + ethToWei(parseFloat(amountToSend)),
-                                        '',
-                                        addressToSend
-                                    ).toPromise()
-                                }
+                                disabled={amountToSend == ''}
+                                onClick={() => publishProposal(
+                                    proposalReason,
+                                    dateToUnixTimestamp(new Date(endDate)),
+                                    functionIds.SEND_MONEY,
+                                    '' + ethToWei(parseFloat(amountToSend)),
+                                    '',
+                                    addressToSend
+                                )}
                             />
                         </div>
                     );
@@ -899,24 +1097,29 @@ function App() {
             selectedView = (
                 <Box>
                     Select proposal function: <DropDown
-                    items={[
-                        'Change proposal approval threshold.',
-                        'Change asset description.',
-                        'Change payout period.',
-                        'Change percentage of income placed in the treasury.',
-                        'Call the function of another contract using treasury funds.',
-                        'Free-form proposal.',
-                        'Send money from the treasury to an address.'
-                    ]}
-                    selected={selectedProposalFunction}
-                    onChange={setSelectedProposalFunction}
-                /> <br/>
+                        items={[
+                            'Change proposal approval threshold.',
+                            'Change asset description.',
+                            'Change percentage of income placed in the treasury.',
+                            'Call the function of another contract using treasury funds.',
+                            'Free-form proposal.',
+                            'Send money from the treasury to an address.'
+                        ]}
+                        selected={selectedProposalFunction}
+                        onChange={setSelectedProposalFunction}
+                    /> <br/>
                     {proposalForm}
                     <DataView
                         display="table"
-                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Agree', 'Implement', 'Cancel']}
+                        fields={['Id', 'Author', 'Description', 'Reason', 'Support (%)', 'End Date', 'Actions']}
                         entries={proposals}
                         renderEntry={({id, owner, reason, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
+
+                            let expired = (expirationDate <= dateToUnixTimestamp(new Date()));
+                            let approved = (parseInt(support) >= proposalApprovalThreshold);
+                            let owned = (owner == currentUser);
+                            let supported = (supportedProposals[id] != undefined);
+
                             return [
                                 id,
                                 displayAddress(owner),
@@ -924,24 +1127,46 @@ function App() {
                                 reason,
                                 amountToPercentage(support, TOTAL_SHARES),
                                 displayDate(expirationDate),
-                                <Button
-                                    size="small"
-                                    display="label"
-                                    label="Agree"
-                                    onClick={() => selectedAsset.supportProposal(id).toPromise()}
-                                />,
-                                <Button
-                                    size="small"
-                                    display="label"
-                                    label="Implement"
-                                    onClick={() => selectedAsset.executeProposal(id).toPromise()}
-                                />,
-                                <Button
-                                    size="small"
-                                    display="label"
-                                    label="Cancel"
-                                    onClick={() => selectedAsset.cancelProposal(id).toPromise()}
-                                />
+                                <Buttons>
+                                    {(expired || supported ? '' :
+                                        <Button
+                                            size="small"
+                                            display="label"
+                                            label="Support"
+                                            onClick={() => {
+                                                if (owners[currentUser].sharesOnSale > 0) {
+                                                    toastAlert("You cannot support proposals while having shares on sale.");
+                                                    return;
+                                                }
+                                                selectedAsset.supportProposal(id).toPromise();
+                                            }}
+                                        />
+                                    )}
+                                    {(expired || !supported ? '' :
+                                        <Button
+                                            size="small"
+                                            display="label"
+                                            label="Revoke Support"
+                                            onClick={() => selectedAsset.revokeProposalSupport(id).toPromise()}
+                                        />
+                                    )}
+                                    {(expired || !approved ? '' :
+                                        <Button
+                                            size="small"
+                                            display="label"
+                                            label="Implement"
+                                            onClick={() => selectedAsset.executeProposal(id).toPromise()}
+                                        />
+                                    )}
+                                    {(expired || owned ? 
+                                        <Button
+                                            size="small"
+                                            display="label"
+                                            label="Cancel"
+                                            onClick={() => selectedAsset.cancelProposal(id).toPromise()}
+                                        />
+                                    : '')}
+                                </Buttons>
                             ]
                         }}
                     />
@@ -951,6 +1176,7 @@ function App() {
 
     return (
         <Main>
+            <ToastHub><Toast>{toast => (toastAlert = toast)}</Toast></ToastHub>
             <div css={`margin-left:-180px; margin-right:-180px`}>
                 {isSyncing && <SyncIndicator/>}
                 <Header
@@ -958,7 +1184,7 @@ function App() {
                     secondary= {(selectedAsset ? displayAddress(selectedAsset.address) : '')}
                 />
                 <Tabs
-                    items={['Asset Registry', 'Asset Description', 'Your Profile', 'Payments', 'Owners', 'Offers', 'Proposals']}
+                    items={['Asset Registry', 'Selected Asset', 'Your Profile', 'Owners', 'Offers', 'Proposals']}
                     selected={selectedTab}
                     onChange={setSelectedTab}
                 />

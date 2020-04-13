@@ -12,19 +12,23 @@ const reducer = state => {
             TREASURY_RATIO_DENOMINATOR: 0,
             functionIds: {},
             currentUser: '',
+            pendingPayout: 0,
+            sharesHistory: [],
+            sharesInvestment: 0,
+            sharesSoldGains: 0,
             assetDescription: '',
             treasuryRatio: 0,
-            payoutPeriod: 0,
             proposalApprovalThreshold: 0,
             treasuryBalance: 0,
-            funds: 0,
-            owners: [],
+            paymentHistory: [],
+            shareValueHistory: [],
+            owners: {},
             offers: {
                 sellOffers: [],
                 buyOffers: []
             },
             proposals: [],
-            supportedProposals: [],
+            supportedProposals: {},
             isSyncing: true
         }
     }
