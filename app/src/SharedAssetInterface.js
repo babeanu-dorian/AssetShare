@@ -33,6 +33,15 @@ export default [
     "type": "function"
   },
   {
+    "constant": false,
+    "inputs": [],
+    "name": "withdrawPayout",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "constant": true,
     "inputs": [],
     "name": "getProposalApprovalThreshold",
@@ -62,15 +71,6 @@ export default [
   },
   {
     "constant": false,
-    "inputs": [],
-    "name": "payOwners",
-    "outputs": [],
-    "payable": false,
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "constant": false,
     "inputs": [
       {
         "name": "id",
@@ -87,20 +87,6 @@ export default [
     "constant": true,
     "inputs": [],
     "name": "getActiveProposalsCount",
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "payable": false,
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "constant": true,
-    "inputs": [],
-    "name": "getPayoutPeriod",
     "outputs": [
       {
         "name": "",
@@ -154,10 +140,6 @@ export default [
       },
       {
         "name": "CHANGE_ASSET_DESCRIPTION",
-        "type": "uint8"
-      },
-      {
-        "name": "CHANGE_PAYOUT_PERIOD",
         "type": "uint8"
       },
       {
@@ -267,8 +249,13 @@ export default [
   },
   {
     "constant": true,
-    "inputs": [],
-    "name": "getFunds",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "getSharesSoldGainsByAddress",
     "outputs": [
       {
         "name": "",
@@ -436,6 +423,29 @@ export default [
   },
   {
     "constant": true,
+    "inputs": [
+      {
+        "name": "idx",
+        "type": "uint256"
+      }
+    ],
+    "name": "getShareValueHistoryByIdx",
+    "outputs": [
+      {
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
     "inputs": [],
     "name": "getActiveOffersCount",
     "outputs": [
@@ -473,6 +483,56 @@ export default [
     "outputs": [
       {
         "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "idx",
+        "type": "uint256"
+      }
+    ],
+    "name": "getPaymentHistoryByIdx",
+    "outputs": [
+      {
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address"
+      },
+      {
+        "name": "idx",
+        "type": "uint256"
+      }
+    ],
+    "name": "getSharesHistoryByIdx",
+    "outputs": [
+      {
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "name": "timestamp",
         "type": "uint256"
       }
     ],
@@ -618,6 +678,20 @@ export default [
     "type": "function"
   },
   {
+    "constant": true,
+    "inputs": [],
+    "name": "getShareValueHistoryLength",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "constant": false,
     "inputs": [
       {
@@ -742,6 +816,25 @@ export default [
     "constant": true,
     "inputs": [
       {
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "getSharesHistoryLength",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
         "name": "idx",
         "type": "uint256"
       }
@@ -751,6 +844,25 @@ export default [
       {
         "name": "",
         "type": "address"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "getSharesInvestmentByAddress",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
       }
     ],
     "payable": false,
@@ -769,6 +881,20 @@ export default [
     "outputs": [],
     "payable": false,
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [],
+    "name": "getPaymentHistoryLength",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -803,6 +929,25 @@ export default [
     "constant": true,
     "inputs": [],
     "name": "TREASURY_RATIO_DENOMINATOR",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "payable": false,
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "constant": true,
+    "inputs": [
+      {
+        "name": "ownerAddress",
+        "type": "address"
+      }
+    ],
+    "name": "getPendingPayout",
     "outputs": [
       {
         "name": "",
@@ -874,12 +1019,6 @@ export default [
   },
   {
     "anonymous": false,
-    "inputs": [],
-    "name": "OWNERS_PAID",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
     "inputs": [
       {
         "indexed": false,
@@ -926,7 +1065,7 @@ export default [
         "type": "uint256"
       }
     ],
-    "name": "SHARES_TRANSFERED",
+    "name": "SHARES_TRANSFERRED",
     "type": "event"
   },
   {

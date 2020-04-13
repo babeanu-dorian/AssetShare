@@ -5,19 +5,18 @@ contract SharedAsset {
     // Events
     event PAYMENT_RECEIVED(address sender, uint amount, string info);
     event TREASURY_DEPOSIT(address sender, uint amount, string info);
-    event OWNERS_PAID();
     event NEW_OFFER(uint id);
     event CANCELLED_OFFER(uint id);
-    event SHARES_TRANSFERED(address from, address to, uint sharesAmount, uint cost);
+    event SHARES_TRANSFERRED(address from, address to, uint sharesAmount, uint cost);
     event NEW_PROPOSAL(uint id);
     event EXECUTED_PROPOSAL(uint id);
     event CANCELLED_PROPOSAL(uint id);
     event REMOVED_SUPPORTED_PROPOSAL(uint idx);
     event VOTE(address voter, uint propId, bool vote);
 
-    struct DataPoint {
-        uint data;
-        uint timestamp;
+    struct DataPoint {              // used to store historical data for statistical analysis
+        uint data;                  // data-point value
+        uint timestamp;             // unix timestamp when the data was recorded
     }
 
     struct Owner {                  // used to store shareholder information
@@ -25,10 +24,11 @@ contract SharedAsset {
         uint sharesOnSale;          // amount of the owner's shares currently on sale
         uint listPosition;          // position in the ownerList
         uint[] supportedProposals;  // list of ids of proposals currently supported
-        uint lastKnownPayout;
-        uint pendingPayout;
-        mapping(uint => DataPoint) sharesHistory;
-        uint sharesHistorySize;
+        uint lastKnownPayout;       // value of totalPayout when the pendingPayout was last calculated
+        uint pendingPayout;         // last calculated amount of unclaimed revenue
+        uint sharesInvestment;      // amount of wei spent on buying shares
+        uint sharesSoldGains;       // amount of wei gained from selling shares
+        DataPoint[] sharesHistory;  // shares owned at different points in the past
     }
 
     enum OfferType {
@@ -100,8 +100,9 @@ contract SharedAsset {
     uint private treasuryBalance;               // wei in the treasury
     uint private treasuryRatio;                 // the ratio of ether placed in the treasury
                                                 //     = (amount * treasuryRatio) / TREASURY_RATIO_DENOMINATOR
-    uint private totalPayout;
-    DataPoint[] payoutHistory;
+    uint private totalPayout;                   // total amount received through the payment function
+    DataPoint[] paymentHistory;                 // history of payments received
+    DataPoint[] shareValueHistory;              // history of prices for which shares were traded
 
     Offer[] private offerList;                  // list of all offers
     uint[] private activeOffersList;            // list of indexes of active offers
@@ -140,6 +141,14 @@ contract SharedAsset {
         return ownershipMap[owner].sharesOnSale;
     }
 
+    function getSharesInvestmentByAddress(address owner) external view returns (uint) {
+        return ownershipMap[owner].sharesInvestment;
+    }
+
+    function getSharesSoldGainsByAddress(address owner) external view returns (uint) {
+        return ownershipMap[owner].sharesSoldGains;
+    }
+
     function getSupportedProposalsCount(address owner) external view returns (uint) {
         return ownershipMap[owner].supportedProposals.length;
     }
@@ -148,6 +157,18 @@ contract SharedAsset {
         // idx must be a valid index in the list of supported proposals
         require(idx < ownershipMap[owner].supportedProposals.length, "");
         return ownershipMap[owner].supportedProposals[idx];
+    }
+
+    function getSharesHistoryLength(address owner) external view returns (uint) {
+        return ownershipMap[owner].sharesHistory.length;
+    }
+    
+    function getSharesHistoryByIdx(address owner, uint idx) external view returns (uint amount, uint timestamp) {
+        // idx must be a valid index in the sharesHistory list
+        require(idx < ownershipMap[owner].sharesHistory.length, "");
+        DataPoint storage dataPoint = ownershipMap[owner].sharesHistory[idx];
+        amount = dataPoint.data;
+        timestamp = dataPoint.timestamp;
     }
 
     function getOwnersCount() external view returns (uint) {
@@ -163,15 +184,13 @@ contract SharedAsset {
     // increase the amount of shares for a given address;
     // if that address was not previously an owner, it becomes one;
     // proposal support is adjusted based on new amount of shares
-    function increaseShares(address ownerAddress, uint amount) internal {
-        Owner storage owner = ownershipMap[ownerAddress];
-        if (owner.shares == 0) {
+    function increaseShares(address ownerAddress, uint amount) internal { 
+        if (ownershipMap[ownerAddress].shares == 0) {
             addOwner(ownerAddress, amount);
         } else {
-            owner.sharesHistory[owner.sharesHistorySize] = DataPoint(owner.shares, block.timestamp);
-            ++owner.sharesHistorySize;
-            owner.pendingPayout += (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES;
-            owner.lastKnownPayout = totalPayout;
+            updatePendingPayout(ownerAddress);
+            Owner storage owner = ownershipMap[ownerAddress];
+            owner.sharesHistory.push(DataPoint(owner.shares, block.timestamp));
             owner.shares += amount;
         }
     }
@@ -180,11 +199,9 @@ contract SharedAsset {
     // if the owner is left without shares, they are removed from the list of owners;
     // proposal support is adjusted based on new amount of shares
     function decreaseShares(address ownerAddress, uint amount) internal {
+        updatePendingPayout(ownerAddress);
         Owner storage owner = ownershipMap[ownerAddress];
-        owner.sharesHistory[owner.sharesHistorySize] = DataPoint(owner.shares, block.timestamp);
-        ++owner.sharesHistorySize;
-        owner.pendingPayout += (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES;
-        owner.lastKnownPayout = totalPayout;
+        owner.sharesHistory.push(DataPoint(owner.shares, block.timestamp));
         owner.shares -= amount;
     }
 
@@ -196,15 +213,11 @@ contract SharedAsset {
 
     // creates a new owner
     function addOwner(address ownerAddress, uint shares) internal {
-        ownershipMap[ownerAddress] = Owner({
-            shares: shares,
-            sharesOnSale: 0,
-            listPosition: ownerList.length,
-            supportedProposals: new uint[](0),
-            lastKnownPayout : totalPayout,
-            pendingPayout : 0,
-            sharesHistorySize : 0
-        });
+        Owner storage owner = ownershipMap[ownerAddress];
+        owner.shares = shares;
+        owner.listPosition = ownerList.length;
+        owner.lastKnownPayout = totalPayout;
+
         ownerList.push(ownerAddress);
     }
 
@@ -216,17 +229,15 @@ contract SharedAsset {
         --ownerList.length;
     }
 
-    
-
     //*****************************PAYMENTS****************************************************
 
     // the ether produced by the asset(s) is sent by calling this function
     function payment(string info) external payable {
         uint treasuryIncrease = (msg.value * treasuryRatio) / TREASURY_RATIO_DENOMINATOR;
         uint payout = msg.value - treasuryIncrease;
-        payoutHistory.push(DataPoint(payout, block.timestamp));
         totalPayout += payout;
         treasuryBalance += treasuryIncrease;
+        paymentHistory.push(DataPoint(payout, block.timestamp));
         emit PAYMENT_RECEIVED(msg.sender, msg.value, info);
     }
 
@@ -236,45 +247,39 @@ contract SharedAsset {
         emit TREASURY_DEPOSIT(msg.sender, msg.value, info);
     }
 
-    // Returns the pending payout for the calling address
-    function getPendingPayout ( ) external view returns (uint) {
-        Owner storage owner = ownershipMap[msg.sender];
-        return owner.pendingPayout + (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES;
+    // returns the actual pending payout for the given address
+    function getPendingPayout(address ownerAddress) external view returns (uint) {
+        return calculatePendingPayout(ownershipMap[ownerAddress]);
     }
 
-    // Updates the pending payout for the given address
-    function updatePendingPayout ( address addr ) external payable {
-        Owner storage owner = ownershipMap[addr];
-        owner.pendingPayout += (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES;
-        owner.lastKnownPayout = totalPayout;
-    }
-
-    // Sends the pending payout to the calling address
-    function withdrawPayout ( ) external payable {
+    // a way for an owner to request the transfer of their unclaimed revenue
+    function withdrawPayout() external {
+        updatePendingPayout(msg.sender);
         Owner storage owner = ownershipMap[msg.sender];
-        msg.sender.transfer(owner.pendingPayout + (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES);
+        msg.sender.transfer(owner.pendingPayout);
         owner.pendingPayout = 0;
+    }
+
+    // updates the pending payout of an owner to the actual value
+    function updatePendingPayout(address ownerAddress) internal {
+        Owner storage owner = ownershipMap[ownerAddress];
+        owner.pendingPayout += calculatePendingPayout(owner);
         owner.lastKnownPayout = totalPayout;
     }
 
-    function getPayoutHistoryLength ( ) external view returns (uint) {
-        return payoutHistory.length;
+    // calculates an owner's actual pending payout
+    function calculatePendingPayout(Owner owner) internal view returns (uint) {
+        return (totalPayout - owner.lastKnownPayout) * owner.shares / TOTAL_SHARES;
     }
 
-    function getPayoutInformation ( uint id ) external view returns (uint amount, uint timestamp) {
-        DataPoint dataPoint = payoutHistory[id];
-        amount = dataPoint.data;
-        timestamp = dataPoint.timestamp;
+    function getPaymentHistoryLength() external view returns (uint) {
+        return paymentHistory.length;
     }
 
-    function getSharesHistorySize ( ) external view returns (uint) {
-        Owner storage owner = ownershipMap[msg.sender];
-        return owner.sharesHistorySize;
-    }
-    
-    function getSharesHistoryInformation ( uint id ) external view returns (uint amount, uint timestamp) {
-        Owner storage owner = ownershipMap[msg.sender];
-        DataPoint dataPoint = owner.sharesHistory[id];
+    function getPaymentHistoryByIdx(uint idx) external view returns (uint amount, uint timestamp) {
+        // idx must be a valid index in the paymentHistory list
+        require(idx < paymentHistory.length, "");
+        DataPoint storage dataPoint = paymentHistory[idx];
         amount = dataPoint.data;
         timestamp = dataPoint.timestamp;
     }
@@ -318,7 +323,7 @@ contract SharedAsset {
 
     // publish a new BUY offer (request for an owner to transfer shares to the caller for a price)
     // the caller will deposit the total cost of the shares in the contract balance
-    // these funds will be transfered to the sellers, or back to the offer author upon cancellation
+    // these funds will be transferred to the sellers, or back to the offer author upon cancellation
     // use 0 for the intendedSeller to let any owner sell shares
     // set the price to 0 to request gift
     function offerToBuy(uint sharesAmount, uint price, address intendedSeller) external payable {
@@ -373,7 +378,10 @@ contract SharedAsset {
         // adjust amount of shares in offer
         decreaseSharesInOffer(offer, sharesAmount);
         
-        emit SHARES_TRANSFERED(offer.seller, msg.sender, sharesAmount, msg.value);
+        // update history
+        updateTradingHistory(offer.seller, msg.sender, msg.value);
+
+        emit SHARES_TRANSFERRED(offer.seller, msg.sender, sharesAmount, msg.value);
     }
 
     // allows the caller to (partially) complete a BUY offer and performs the exchange of shares and ether
@@ -397,6 +405,9 @@ contract SharedAsset {
         // the offer must contain the requested amount of shares
         require(offer.shares >= sharesAmount, "");
 
+        // owners cannot sell shares while supporting proposals.
+        require(ownershipMap[msg.sender].supportedProposals.length == 0, "");
+
         // the caller must own the amount of shares they offer to sell
         require(sharesAmount + ownershipMap[msg.sender].sharesOnSale <= ownershipMap[msg.sender].shares, "");
 
@@ -410,7 +421,10 @@ contract SharedAsset {
         // adjust amount of shares in offer
         decreaseSharesInOffer(offer, sharesAmount);
         
-        emit SHARES_TRANSFERED(msg.sender, offer.buyer, sharesAmount, earnings);
+        // update history
+        updateTradingHistory(msg.sender, offer.buyer, earnings);
+
+        emit SHARES_TRANSFERRED(msg.sender, offer.buyer, sharesAmount, earnings);
     }
 
     // allows the merging of a buying offer with a selling offer and performs the exchange of shares and ether
@@ -471,7 +485,10 @@ contract SharedAsset {
         decreaseSharesInOffer(sellOffer, sharesAmount);
         decreaseSharesInOffer(buyOffer, sharesAmount);
 
-        emit SHARES_TRANSFERED(sellOffer.seller, buyOffer.buyer, sharesAmount, sellerRevenue);
+        // update history
+        updateTradingHistory(sellOffer.seller, buyOffer.buyer, sellerRevenue);
+
+        emit SHARES_TRANSFERRED(sellOffer.seller, buyOffer.buyer, sharesAmount, sellerRevenue);
     }
 
     function decreaseSharesInOffer(Offer storage offer, uint sharesAmount) private {
@@ -564,6 +581,24 @@ contract SharedAsset {
         creationDate = offer.creationDate;
         completionDate = offer.completionDate;
         cancelled = offer.cancelled;
+    }
+
+    function updateTradingHistory(address seller, address buyer, uint price) internal {
+        ownershipMap[seller].sharesSoldGains += price;
+        ownershipMap[buyer].sharesInvestment += price;
+        shareValueHistory.push(DataPoint(price, block.timestamp));
+    }
+
+    function getShareValueHistoryLength() external view returns (uint) {
+        return shareValueHistory.length;
+    }
+
+    function getShareValueHistoryByIdx(uint idx) external view returns (uint amount, uint timestamp) {
+        // idx must be a valid index in the shareValueHistory list
+        require(idx < shareValueHistory.length, "");
+        DataPoint storage dataPoint = shareValueHistory[idx];
+        amount = dataPoint.data;
+        timestamp = dataPoint.timestamp;
     }
 
     //*****************************PROPOSALS****************************************************
@@ -752,7 +787,7 @@ contract SharedAsset {
 
         } else if (functionId == TaskFunction.EXECUTE_EXTERNAL_CONTRACT) {
 
-            // the treasury must contain the amount of money to be transfered
+            // the treasury must contain the amount of money to be transferred
             require(proposal.task.uintArg <= treasuryBalance, "");
             // attempt to call external function, revert if it fails
             require(
@@ -765,7 +800,7 @@ contract SharedAsset {
 
         } else if (functionId == TaskFunction.SEND_MONEY) {
 
-            // the treasury must contain the amount of money to be transfered
+            // the treasury must contain the amount of money to be transferred
             require(proposal.task.uintArg <= treasuryBalance, "");
             // attempt to transfer funds to seller, revert if it fails
             require(proposal.task.addressArg.send(proposal.task.uintArg), "");

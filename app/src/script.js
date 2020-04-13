@@ -26,12 +26,16 @@ app.store(
                         TOTAL_SHARES: await getTotalShares(),
                         TREASURY_RATIO_DENOMINATOR: await getTreasuryRatioDenominator(),
                         functionIds: await getTaskFunctionValues(),
+                        pendingPayout: await getPendingPayout(state.currentUser),
+                        sharesHistory: await getSharesHistory(state.currentUser),
+                        sharesInvestment: await getSharesInvestment(state.currentUser),
+                        sharesSoldGains: await getSharesSoldGains(state.currentUser),
                         assetDescription: await getAssetDescription(),
                         treasuryRatio: await getTreasuryRatio(),
-                        payoutPeriod: await getPayoutPeriod(),
                         proposalApprovalThreshold: await getProposalApprovalThreshold(),
                         treasuryBalance: await getTreasuryBalance(),
-                        funds: await getFunds(),
+                        paymentHistory: await getPaymentHistory(),
+                        shareValueHistory: await getShareValueHistory(),
                         owners: await getOwners(),
                         offers: await getActiveOffers(),
                         proposals: await getActiveProposals(),
@@ -40,26 +44,36 @@ app.store(
                 case 'PAYMENT_RECEIVED':
                     return {
                         ...nextState,
+                        pendingPayout: await getPendingPayout(state.currentUser),
                         treasuryBalance: await getTreasuryBalance(),
-                        funds: await getFunds()
+                        paymentHistory: await getPaymentHistory()
                     }
                 case 'TREASURY_DEPOSIT':
                     return {
                         ...nextState,
                         treasuryBalance: await getTreasuryBalance()
                     }
-                case 'OWNERS_PAID':
+                case 'PAYOUT_WITHDRAWN':
                     return {
                         ...nextState,
-                        funds: await getFunds()
+                        pendingPayout: 0
                     }
                 case 'NEW_OFFER':
-                case 'SHARES_TRANSFERRED':
                 case 'CANCELLED_OFFER':
                     return {
                         ...nextState,
                         owners: await getOwners(),
                         offers: await getActiveOffers()
+                    }
+                case 'SHARES_TRANSFERRED':
+                    return {
+                        ...nextState,
+                        owners: await getOwners(),
+                        offers: await getActiveOffers(),
+                        sharesHistory: await getSharesHistory(state.currentUser),
+                        sharesInvestment: await getSharesInvestment(state.currentUser),
+                        sharesSoldGains: await getSharesSoldGains(state.currentUser),
+                        shareValueHistory: await getShareValueHistory()
                     }
                 case 'NEW_PROPOSAL':
                 case 'CANCELLED_PROPOSAL':
@@ -74,7 +88,6 @@ app.store(
                         ...nextState,
                         assetDescription: await getAssetDescription(),
                         treasuryRatio: await getTreasuryRatio(),
-                        payoutPeriod: await getPayoutPeriod(),
                         proposalApprovalThreshold: await getProposalApprovalThreshold(),
                         treasuryBalance: await getTreasuryBalance(),
                         proposals: await getActiveProposals(),
@@ -89,7 +102,11 @@ app.store(
                     return {
                         ...nextState,
                         currentUser: event.returnValues.account,
-                        supportedProposals: await getSupportedProposals(event.returnValues.account)
+                        pendingPayout: await getPendingPayout(event.returnValues.account),
+                        supportedProposals: await getSupportedProposals(event.returnValues.account),
+                        sharesHistory: await getSharesHistory(event.returnValues.account),
+                        sharesInvestment: await getSharesInvestment(event.returnValues.account),
+                        sharesSoldGains: await getSharesSoldGains(event.returnValues.account)
                     }
                 case events.SYNC_STATUS_SYNCING:
                     return {...nextState, isSyncing: true}
@@ -116,19 +133,23 @@ function initializeState() {
             TREASURY_RATIO_DENOMINATOR: 0,
             functionIds: {},
             currentUser: '',
+            pendingPayout: 0,
+            sharesHistory: [],
+            sharesInvestment: 0,
+            sharesSoldGains: 0,
             assetDescription: '',
             treasuryRatio: 0,
-            payoutPeriod: 0,
             proposalApprovalThreshold: 0,
             treasuryBalance: 0,
-            funds: 0,
-            owners: [],
+            paymentHistory: [],
+            shareValueHistory: [],
+            owners: {},
             offers: {
-            sellOffers: [],
-            buyOffers: []
+                sellOffers: [],
+                buyOffers: []
             },
             proposals: [],
-            supportedProposals: []
+            supportedProposals: {}
         }
     }
 }
@@ -162,10 +183,6 @@ async function getTreasuryRatio() {
     return await selectedAsset.getTreasuryRatio().toPromise();
 }
 
-async function getPayoutPeriod() {
-    return await selectedAsset.getPayoutPeriod().toPromise();
-}
-
 async function getProposalApprovalThreshold() {
     return await selectedAsset.getProposalApprovalThreshold().toPromise();
 }
@@ -174,22 +191,33 @@ async function getTreasuryBalance() {
     return parseInt(await selectedAsset.getTreasuryBalance().toPromise(), 10);
 }
 
-async function getFunds() {
-    return parseInt(await selectedAsset.getFunds().toPromise(), 10);
-}
-
 async function getOwners() {
     let ownersCount = parseInt(await selectedAsset.getOwnersCount().toPromise(), 10);
-    let owners = [];
+    let owners = {};
     for (let i = 0; i != ownersCount; ++i) {
         let address = await selectedAsset.getOwnerAddressByIndex(i).toPromise();
-        owners.push({
+        owners[address] = {
             'address': address,
             'shares': parseInt(await selectedAsset.getSharesByAddress(address).toPromise(), 10),
             'sharesOnSale': parseInt(await selectedAsset.getSharesOnSaleByAddress(address).toPromise(), 10)
-        });
+        };
     }
     return owners;
+}
+
+async function getPendingPayout(address) {
+    if (!address || !selectedAsset) return 0;
+    return parseInt(await selectedAsset.getPendingPayout(address).toPromise(), 10);
+}
+
+async function getSharesInvestment(address) {
+    if (!address || !selectedAsset) return 0;
+    return parseInt(await selectedAsset.getSharesInvestmentByAddress(address).toPromise(), 10);
+}
+
+async function getSharesSoldGains(address) {
+    if (!address || !selectedAsset) return 0;
+    return parseInt(await selectedAsset.getSharesSoldGainsByAddress(address).toPromise(), 10);
 }
 
 async function getActiveOffers() {
@@ -225,17 +253,51 @@ async function getActiveProposals() {
     return proposals;
 }
 
-async function getSupportedProposals(owner) {
+async function getSupportedProposals(address) {
 
-    if (!owner || !selectedAsset) return [];
+    if (!address || !selectedAsset) return [];
 
-    let count = parseInt(await selectedAsset.getSupportedProposalsCount(owner).toPromise(), 10);
-    let proposals = [];
+    let count = parseInt(await selectedAsset.getSupportedProposalsCount(address).toPromise(), 10);
+    let proposals = {};
     for (let i = 0; i != count; ++i) {
-        let id = parseInt(await selectedAsset.getSupportedProposalIdByIndex(owner, i).toPromise(), 10);
+        let id = parseInt(await selectedAsset.getSupportedProposalIdByIndex(address, i).toPromise(), 10);
         let proposal = await selectedAsset.getProposal(id).toPromise();
         proposal.idx = i;
-        proposals.push(proposal);
+        proposals[id] = proposal;
     }
     return proposals;
+}
+
+async function getSharesHistory(address) {
+
+    if (!address || !selectedAsset) return [];
+
+    let count = parseInt(await selectedAsset.getSharesHistoryLength(address).toPromise(), 10);
+    let history = [];
+    for (let i = 0 ; i < count ; ++i) {
+        history.push(await selectedAsset.getSharesHistoryByIdx(address, i).toPromise());
+    }
+    history.push({
+        amount: parseInt(await selectedAsset.getSharesByAddress(address).toPromise(), 10),
+        timestamp: Math.floor(new Date().getTime() / 1000)
+    });
+    return history;
+}
+
+async function getPaymentHistory() {
+    let count = parseInt(await selectedAsset.getPaymentHistoryLength().toPromise(), 10);
+    let history = [];
+    for (let i = 0 ; i < count ; ++i) {
+        history.push(await selectedAsset.getPaymentHistoryByIdx(i).toPromise());
+    }
+    return history;
+}
+
+async function getShareValueHistory() {
+    let count = parseInt(await selectedAsset.getShareValueHistoryLength().toPromise(), 10);
+    let history = [];
+    for (let i = 0 ; i < count ; ++i ) {
+        history.push(await selectedAsset.getShareValueHistoryByIdx(i).toPromise());
+    }
+    return history;
 }
