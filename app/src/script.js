@@ -68,12 +68,12 @@ app.store(
                 case 'SHARES_TRANSFERRED':
                     return {
                         ...nextState,
+                        owners: await getOwners(),
+                        offers: await getActiveOffers(),
                         sharesHistory: await getSharesHistory(state.currentUser),
                         sharesInvestment: await getSharesInvestment(state.currentUser),
                         sharesSoldGains: await getSharesSoldGains(state.currentUser),
-                        shareValueHistory: await getShareValueHistory(),
-                        owners: await getOwners(),
-                        offers: await getActiveOffers()
+                        shareValueHistory: await getShareValueHistory()
                     }
                 case 'NEW_PROPOSAL':
                 case 'CANCELLED_PROPOSAL':
@@ -275,7 +275,7 @@ async function getSharesHistory(address) {
     let count = parseInt(await selectedAsset.getSharesHistoryLength(address).toPromise(), 10);
     let history = [];
     for (let i = 0 ; i < count ; ++i) {
-        history.push(await getSharesHistoryByIdx(address, i).toPromise());
+        history.push(await selectedAsset.getSharesHistoryByIdx(address, i).toPromise());
     }
     history.push({
         amount: parseInt(await selectedAsset.getSharesByAddress(address).toPromise(), 10),

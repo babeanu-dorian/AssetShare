@@ -281,18 +281,25 @@ function App() {
 
         if (paymentHistory.length == 0) return [];
 
+        let shares = 0;
         let sharesIdx = -1;
         let nextChangeInShares = (sharesHistory.length == 0 ? Number.MAX_VALUE : parseInt(sharesHistory[0].timestamp));
         let income = [];
 
         for (let paymentIdx = 0; paymentIdx != paymentHistory.length; ++paymentIdx) {
-            if (paymentHistory[paymentIdx].timestamp >= nextChangeInShares) {
+            while (paymentHistory[paymentIdx].timestamp >= nextChangeInShares) {
                 ++sharesIdx;
                 nextChangeInShares = (sharesIdx >= sharesHistory.length ? Number.MAX_VALUE : parseInt(sharesHistory[sharesIdx].timestamp));
             }
-            let shares = (sharesIdx < 0 ? 0 : sharesHistory[sharesIdx].amount);
+            if (sharesIdx < 0) {
+                shares = 0;
+            } else if (sharesIdx >= sharesHistory.length) {
+                shares = sharesHistory[sharesHistory.length - 1].amount;
+            } else {
+                shares = sharesHistory[sharesIdx].amount;
+            }
             income.push({
-                amount: shares * paymentHistory[paymentIdx].amount,
+                amount: amountToPercentage(shares, TOTAL_SHARES) * weiToEth(paymentHistory[paymentIdx].amount),
                 timestamp: paymentHistory[paymentIdx].timestamp
             });
         }
@@ -355,7 +362,7 @@ function App() {
             selectedView = (
                 <Box>
                     Address:
-                    <Text css={`margin-left:95px`}>{displayAddress(selectedAsset.address)}</Text> <br/>
+                    <Text css={`margin-left:95px`}>{(selectedAsset ? displayAddress(selectedAsset.address) : '')}</Text> <br/>
                     Description:
                     <Text css={`margin-left:75px;`}>{assetDescription}</Text> <br/>
                     Treasury balance:
@@ -576,17 +583,17 @@ function App() {
                     );
                     break;
                 case 3: // Financial Data
-                    let income = weiToEth(userIncomeHistory().reduce((a, b) => (a.amount + b.amount)));
+                    let income = userIncomeHistory().reduce((a, b) => (a.amount + b.amount), 0);
                     selectedProfileView = (
                         <div>
-                            Eth invested:
-                            <Text css={`margin-left:110px`}>{weitToEth(sharesInvestment)}</Text> <br/>
-                            Eth gained from selling shares:
-                            <Text css={`margin-left:20px`}>{weitToEth(sharesSoldGains)}</Text> <br/>
-                            Total income (eth):
-                            <Text css={`margin-left:85px`}>{weitToEth(income)}</Text> <br/>
-                            Return on Investment (%):
-                            <Text css={`margin-left:50px`}>{calculateROI(weitToEth(sharesInvestment), income + weitToEth(sharesSoldGains))}</Text> <br/>
+                            Amount invested:
+                            <Text css={`margin-left:145px`}>{weiToEth(sharesInvestment)} eth</Text> <br/>
+                            Amount gained from selling shares:
+                            <Text css={`margin-left:20px`}>{weiToEth(sharesSoldGains)} eth</Text> <br/>
+                            Total income:
+                            <Text css={`margin-left:160px`}>{weiToEth(income)} eth</Text> <br/>
+                            Return on Investment:
+                            <Text css={`margin-left:90px`}>{calculateROI(weiToEth(sharesInvestment), income + weiToEth(sharesSoldGains))} %</Text> <br/>
                         </div>
                     );
                     break;
@@ -597,7 +604,7 @@ function App() {
                             labels: incomeHistory.map(entry => displayDate(entry.timestamp)),
                             datasets: [
                                 {
-                                    label: 'Ownership History (%)',
+                                    label: 'Income History (eth)',
                                     data: incomeHistory.map(entry => amountToPercentage(weiToEth(entry.amount), TOTAL_SHARES))
                                 }
                             ]
@@ -611,7 +618,7 @@ function App() {
                             datasets: [
                                 {
                                     label: 'Ownership History (%)',
-                                    data: shareValueHistory.map(entry => amountToPercentage(entry.amount, TOTAL_SHARES))
+                                    data: sharesHistory.map(entry => amountToPercentage(entry.amount, TOTAL_SHARES))
                                 }
                             ]
                         }}/>

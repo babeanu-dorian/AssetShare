@@ -1065,7 +1065,7 @@ export default [
         "type": "uint256"
       }
     ],
-    "name": "SHARES_TRANSFERED",
+    "name": "SHARES_TRANSFERRED",
     "type": "event"
   },
   {

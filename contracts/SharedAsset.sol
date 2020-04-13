@@ -7,7 +7,7 @@ contract SharedAsset {
     event TREASURY_DEPOSIT(address sender, uint amount, string info);
     event NEW_OFFER(uint id);
     event CANCELLED_OFFER(uint id);
-    event SHARES_TRANSFERED(address from, address to, uint sharesAmount, uint cost);
+    event SHARES_TRANSFERRED(address from, address to, uint sharesAmount, uint cost);
     event NEW_PROPOSAL(uint id);
     event EXECUTED_PROPOSAL(uint id);
     event CANCELLED_PROPOSAL(uint id);
@@ -323,7 +323,7 @@ contract SharedAsset {
 
     // publish a new BUY offer (request for an owner to transfer shares to the caller for a price)
     // the caller will deposit the total cost of the shares in the contract balance
-    // these funds will be transfered to the sellers, or back to the offer author upon cancellation
+    // these funds will be transferred to the sellers, or back to the offer author upon cancellation
     // use 0 for the intendedSeller to let any owner sell shares
     // set the price to 0 to request gift
     function offerToBuy(uint sharesAmount, uint price, address intendedSeller) external payable {
@@ -381,7 +381,7 @@ contract SharedAsset {
         // update history
         updateTradingHistory(offer.seller, msg.sender, msg.value);
 
-        emit SHARES_TRANSFERED(offer.seller, msg.sender, sharesAmount, msg.value);
+        emit SHARES_TRANSFERRED(offer.seller, msg.sender, sharesAmount, msg.value);
     }
 
     // allows the caller to (partially) complete a BUY offer and performs the exchange of shares and ether
@@ -424,7 +424,7 @@ contract SharedAsset {
         // update history
         updateTradingHistory(msg.sender, offer.buyer, earnings);
 
-        emit SHARES_TRANSFERED(msg.sender, offer.buyer, sharesAmount, earnings);
+        emit SHARES_TRANSFERRED(msg.sender, offer.buyer, sharesAmount, earnings);
     }
 
     // allows the merging of a buying offer with a selling offer and performs the exchange of shares and ether
@@ -488,7 +488,7 @@ contract SharedAsset {
         // update history
         updateTradingHistory(sellOffer.seller, buyOffer.buyer, sellerRevenue);
 
-        emit SHARES_TRANSFERED(sellOffer.seller, buyOffer.buyer, sharesAmount, sellerRevenue);
+        emit SHARES_TRANSFERRED(sellOffer.seller, buyOffer.buyer, sharesAmount, sellerRevenue);
     }
 
     function decreaseSharesInOffer(Offer storage offer, uint sharesAmount) private {
@@ -787,7 +787,7 @@ contract SharedAsset {
 
         } else if (functionId == TaskFunction.EXECUTE_EXTERNAL_CONTRACT) {
 
-            // the treasury must contain the amount of money to be transfered
+            // the treasury must contain the amount of money to be transferred
             require(proposal.task.uintArg <= treasuryBalance, "");
             // attempt to call external function, revert if it fails
             require(
@@ -800,7 +800,7 @@ contract SharedAsset {
 
         } else if (functionId == TaskFunction.SEND_MONEY) {
 
-            // the treasury must contain the amount of money to be transfered
+            // the treasury must contain the amount of money to be transferred
             require(proposal.task.uintArg <= treasuryBalance, "");
             // attempt to transfer funds to seller, revert if it fails
             require(proposal.task.addressArg.send(proposal.task.uintArg), "");
