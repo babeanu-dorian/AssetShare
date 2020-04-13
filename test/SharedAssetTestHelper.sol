@@ -1,8 +1,11 @@
 pragma solidity 0.4.24;
 
-import "../contracts/AssetShareApp.sol";
+import "../contracts/SharedAsset.sol";
 
-contract AssetShareAppTestHelper is AssetShareApp {
+contract SharedAssetTestHelper is SharedAsset {
+    
+    constructor(address initialOwner, string description) SharedAsset(initialOwner, description) public {
+    }
     
     function callIncreaseShares(address ownerAddress, uint amount) external {
         super.increaseShares(ownerAddress, amount);

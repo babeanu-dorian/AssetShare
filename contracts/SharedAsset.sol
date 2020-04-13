@@ -112,9 +112,6 @@ contract SharedAsset {
 
     constructor(address initialOwner, string description) public {
 
-        // TODO: pass this in as parameter
-        // address initialOwner = address(0xb4124cEB3451635DAcedd11767f004d8a28c6eE7);
-
         // contract creator starts as sole owner
         addOwner(initialOwner, TOTAL_SHARES);
         assetDescription = description;
@@ -166,7 +163,7 @@ contract SharedAsset {
     // increase the amount of shares for a given address;
     // if that address was not previously an owner, it becomes one;
     // proposal support is adjusted based on new amount of shares
-    function increaseShares(address ownerAddress, uint amount) private {
+    function increaseShares(address ownerAddress, uint amount) internal {
         Owner storage owner = ownershipMap[ownerAddress];
         if (owner.shares == 0) {
             addOwner(ownerAddress, amount);
@@ -182,7 +179,7 @@ contract SharedAsset {
     // decrease the amount of shares for a given owner;
     // if the owner is left without shares, they are removed from the list of owners;
     // proposal support is adjusted based on new amount of shares
-    function decreaseShares(address ownerAddress, uint amount) private {
+    function decreaseShares(address ownerAddress, uint amount) internal {
         Owner storage owner = ownershipMap[ownerAddress];
         owner.sharesHistory[owner.sharesHistorySize] = DataPoint(owner.shares, block.timestamp);
         ++owner.sharesHistorySize;
@@ -192,13 +189,13 @@ contract SharedAsset {
     }
 
     // transfers shares from one account to another
-    function transferShares(address from, address to, uint sharesAmount) private {
+    function transferShares(address from, address to, uint sharesAmount) internal {
         decreaseShares(from, sharesAmount);
         increaseShares(to, sharesAmount);
     }
 
     // creates a new owner
-    function addOwner(address ownerAddress, uint shares) private {
+    function addOwner(address ownerAddress, uint shares) internal {
         ownershipMap[ownerAddress] = Owner({
             shares: shares,
             sharesOnSale: 0,
@@ -212,7 +209,7 @@ contract SharedAsset {
     }
 
     // removes an owner from the ownerList
-    function removeOwner(address ownerAddress) private {
+    function removeOwner(address ownerAddress) internal {
         uint pos = ownershipMap[ownerAddress].listPosition;
         ownerList[pos] = ownerList[ownerList.length - 1];
         ownershipMap[ownerList[pos]].listPosition = pos;
@@ -860,6 +857,4 @@ contract SharedAsset {
         completionDate = proposal.completionDate;
         cancelled = proposal.cancelled;
     }
-
 }
-

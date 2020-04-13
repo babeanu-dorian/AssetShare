@@ -8,7 +8,7 @@ contract AssetShareApp is AragonApp {
 
     event NEW_ASSET(address assetAddress);
 
-    address[] private assetList;
+    address[] internal assetList;
 
     function initialize() public onlyInit {
         initialized();
@@ -28,5 +28,4 @@ contract AssetShareApp is AragonApp {
         require(idx < assetList.length);
         return assetList[idx];
     }
-
 }
