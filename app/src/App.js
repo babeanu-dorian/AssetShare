@@ -99,6 +99,10 @@ function App() {
         return ethToWei(amount * 100 / TOTAL_SHARES);
     }
 
+    function weiPerShareToEthPerPercentage(amount) {
+        return weiToEth(amount * TOTAL_SHARES / 100);
+    }
+
     function calcPartialPrice(percentageShares, pricePerShare) {
         return pricePerShare * percentageToAmount(percentageShares, TOTAL_SHARES);
     }
@@ -233,12 +237,6 @@ function App() {
                 return 'Change asset description to\n\"'
                     + stringArg
                     + '\".';
-            case functionIds.CHANGE_PAYOUT_PERIOD:
-                return 'Change payout period from '
-                    + payoutPeriod
-                    + ' seconds to '
-                    + uintArg
-                    + ' seconds.';
             case functionIds.CHANGE_TREASURY_RATIO:
                 return 'Change the percentage of income placed in the treasury from '
                     + amountToPercentage(treasuryRatio, TREASURY_RATIO_DENOMINATOR)
@@ -279,35 +277,35 @@ function App() {
 
     function userIncomeHistory() {
 
-        if (paymentHistory.length == 0) return [];
+            let shares = 0;
+            let sharesIdx = 0;
+            let nextChangeInShares = (sharesHistory.length == 0 ? Number.MAX_VALUE : parseInt(sharesHistory[0].timestamp));
+            let income = [];
 
-        let shares = 0;
-        let sharesIdx = -1;
-        let nextChangeInShares = (sharesHistory.length == 0 ? Number.MAX_VALUE : parseInt(sharesHistory[0].timestamp));
-        let income = [];
+            for (let paymentIdx = 0; paymentIdx != paymentHistory.length; ++paymentIdx) {
 
-        for (let paymentIdx = 0; paymentIdx != paymentHistory.length; ++paymentIdx) {
-            while (paymentHistory[paymentIdx].timestamp >= nextChangeInShares) {
-                ++sharesIdx;
-                nextChangeInShares = (sharesIdx >= sharesHistory.length ? Number.MAX_VALUE : parseInt(sharesHistory[sharesIdx].timestamp));
+                while (paymentHistory[paymentIdx].timestamp >= nextChangeInShares) {
+                    ++sharesIdx;
+                    nextChangeInShares = (sharesIdx == sharesHistory.length ? Number.MAX_VALUE : parseInt(sharesHistory[sharesIdx].timestamp));
+                }
+
+                let shares = (sharesIdx == 0 ? 0 : sharesHistory[sharesIdx - 1].amount);
+
+                income.push({
+                    amount: (shares / TOTAL_SHARES) * weiToEth(paymentHistory[paymentIdx].amount),
+                    timestamp: paymentHistory[paymentIdx].timestamp
+                });
             }
-            if (sharesIdx < 0) {
-                shares = 0;
-            } else if (sharesIdx >= sharesHistory.length) {
-                shares = sharesHistory[sharesHistory.length - 1].amount;
-            } else {
-                shares = sharesHistory[sharesIdx].amount;
-            }
-            income.push({
-                amount: amountToPercentage(shares, TOTAL_SHARES) * weiToEth(paymentHistory[paymentIdx].amount),
-                timestamp: paymentHistory[paymentIdx].timestamp
-            });
-        }
 
-        return income;
+            console.log(income);
+            return income;
     }
 
     function calculateROI(investment, revenue) {
+
+        if (!investment)
+            return 'NA';
+
         return (revenue - investment) * 100 / investment;
     }
 
@@ -404,7 +402,7 @@ function App() {
                         datasets: [
                             {
                                 label: 'Value of one share (eth / %)',
-                                data: shareValueHistory.map(entry => amountToPercentage(weiToEth(entry.amount), TOTAL_SHARES))
+                                data: shareValueHistory.map(entry => weiPerShareToEthPerPercentage(entry.amount))
                             }
                         ]
                     }}/><br/>
@@ -527,11 +525,8 @@ function App() {
                             entries={Object.values(supportedProposals)}
                             renderEntry={({id, idx, owner, reason, completionDate, expirationDate, functionId, uintArg, stringArg, addressArg, support}) => {
 
-                                let completed = (completionDate == 0);
-                                let expired = (expirationDate <= dateToUnixTimestamp(new Date()));
-                                let active = !(completed || expired);
+                                let active = (completionDate == 0 && expirationDate > dateToUnixTimestamp(new Date()));
                                 let approved = (parseInt(support) >= proposalApprovalThreshold);
-                                let owned = (owner == currentUser);
 
                                 return [
                                     id,
@@ -562,13 +557,6 @@ function App() {
                                                 onClick={() => selectedAsset.executeProposal(id).toPromise()}
                                             />
                                         : '')}
-                                        {(owned || expired ? 
-                                            <Button
-                                                display="label"
-                                                label="Cancel"
-                                                onClick={() => selectedAsset.cancelProposal(id).toPromise()}
-                                            />
-                                        : '')}
                                         {(active ? '' :
                                             <Button
                                                 display="label"
@@ -583,7 +571,8 @@ function App() {
                     );
                     break;
                 case 3: // Financial Data
-                    let income = userIncomeHistory().reduce((a, b) => (a.amount + b.amount), 0);
+                    let incomeArray = userIncomeHistory();
+                    let income = incomeArray.reduce((a, b) => (a + b.amount), 0);
                     selectedProfileView = (
                         <div>
                             Amount invested:
@@ -591,9 +580,9 @@ function App() {
                             Amount gained from selling shares:
                             <Text css={`margin-left:20px`}>{weiToEth(sharesSoldGains)} eth</Text> <br/>
                             Total income:
-                            <Text css={`margin-left:160px`}>{weiToEth(income)} eth</Text> <br/>
+                            <Text css={`margin-left:175px`}>{income} eth</Text> <br/>
                             Return on Investment:
-                            <Text css={`margin-left:90px`}>{calculateROI(weiToEth(sharesInvestment), income + weiToEth(sharesSoldGains))} %</Text> <br/>
+                            <Text css={`margin-left:113px`}>{calculateROI(weiToEth(sharesInvestment), income + weiToEth(sharesSoldGains))} %</Text> <br/>
                         </div>
                     );
                     break;
@@ -605,7 +594,7 @@ function App() {
                             datasets: [
                                 {
                                     label: 'Income History (eth)',
-                                    data: incomeHistory.map(entry => amountToPercentage(weiToEth(entry.amount), TOTAL_SHARES))
+                                    data: incomeHistory.map(entry => entry.amount)
                                 }
                             ]
                         }}/>

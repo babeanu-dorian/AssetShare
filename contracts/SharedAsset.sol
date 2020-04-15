@@ -379,7 +379,7 @@ contract SharedAsset {
         decreaseSharesInOffer(offer, sharesAmount);
         
         // update history
-        updateTradingHistory(offer.seller, msg.sender, msg.value);
+        updateTradingHistory(offer.seller, msg.sender, offer.price);
 
         emit SHARES_TRANSFERRED(offer.seller, msg.sender, sharesAmount, msg.value);
     }
@@ -422,7 +422,7 @@ contract SharedAsset {
         decreaseSharesInOffer(offer, sharesAmount);
         
         // update history
-        updateTradingHistory(msg.sender, offer.buyer, earnings);
+        updateTradingHistory(msg.sender, offer.buyer, offer.price);
 
         emit SHARES_TRANSFERRED(msg.sender, offer.buyer, sharesAmount, earnings);
     }
@@ -486,7 +486,7 @@ contract SharedAsset {
         decreaseSharesInOffer(buyOffer, sharesAmount);
 
         // update history
-        updateTradingHistory(sellOffer.seller, buyOffer.buyer, sellerRevenue);
+        updateTradingHistory(sellOffer.seller, buyOffer.buyer, sellerRevenue / sharesAmount);
 
         emit SHARES_TRANSFERRED(sellOffer.seller, buyOffer.buyer, sharesAmount, sellerRevenue);
     }
